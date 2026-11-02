@@ -188,7 +188,32 @@ final class ShiftSession {
         } else if (p instanceof MovePlayerPacket m) {
             Vector3f position = m.getPosition();
             if (m.getRuntimeEntityId() == localId) {
-                // Java→Geyser 已先扣除原點；保留小座標，不能再轉一次。
+                // Java inbound should already have localized this position. Recover safely if
+                // a respawn/backend transition lets one unshifted absolute position through.
+                ShiftConfig.Dim d = dimCfg();
+                boolean looksAbsolute = Math.abs(position.getX()) > d.trigger
+                        || Math.abs(position.getZ()) > d.trigger;
+                if (looksAbsolute && (offX == 0 && offZ == 0)) {
+                    int nx = nextOff(0, position.getX(), d);
+                    int nz = nextOff(0, position.getZ(), d);
+                    if (nx != 0 || nz != 0) {
+                        offX = nx;
+                        offZ = nz;
+                        position = toB(position);
+                        m.setPosition(position);
+                        log.warning(String.format(
+                                "[RealCoords] %s: fallback localized an unshifted player position; origin=(%d,%d)",
+                                name(), offX, offZ));
+                    }
+                } else if (looksAbsolute && (offX != 0 || offZ != 0)) {
+                    // Critical anti-accumulation guard: never interpret a raw world position
+                    // as local and add the existing offset to it a second time.
+                    position = toB(position);
+                    m.setPosition(position);
+                    warnRate("unshifted-player-position",
+                            "[RealCoords] " + name() + ": received an unshifted absolute player position; applied current origin once",
+                            5000);
+                }
                 onLocalPosition(position, m.getRotation());
             } else {
                 // Entity absolute positions are localized in javaInbound while still double precision.
@@ -285,6 +310,8 @@ final class ShiftSession {
         offZ = 0;
         chunks.clear();
         entities.clear();
+        havePos = false;
+        lx = ly = lz = 0;
         hold = false;
     }
 
@@ -825,7 +852,10 @@ final class ShiftSession {
             boolean relZ = relative.contains(org.geysermc.mcprotocollib.protocol.data.game.entity.player.PositionElement.Z);
 
             // 初次位置同步時，先在 double 精度下決定原點，避免 Geyser 先轉成 float。
-            if (!havePos && offX == 0 && offZ == 0) {
+            // Offset may have been reset by a respawn/dimension transition even when
+            // havePos still describes the previous world. Reinitialize whenever the
+            // current absolute position arrives with a zero origin.
+            if (offX == 0 && offZ == 0) {
                 ShiftConfig.Dim d = dimCfg();
                 int nx = relX ? 0 : nextOff(offX, x, d);
                 int nz = relZ ? 0 : nextOff(offZ, z, d);
