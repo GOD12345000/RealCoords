@@ -1,0 +1,97 @@
+diff --git a/api/build.gradle.kts b/api/build.gradle.kts
+index 0000000..0000000 100644
+--- a/api/build.gradle.kts
++++ b/api/build.gradle.kts
+@@ -5,6 +5,7 @@ dependencies {
+     api(libs.base.api)
+     api(libs.math)
+     api(libs.jetbrains.annotations)
++    api(libs.mcprotocollib)
+ }
+ 
+ version = property("version")!!
+diff --git a/api/src/main/java/org/geysermc/geyser/api/event/downstream/DownstreamSessionInitializeEvent.java b/api/src/main/java/org/geysermc/geyser/api/event/downstream/DownstreamSessionInitializeEvent.java
+new file mode 100644
+--- /dev/null
++++ b/api/src/main/java/org/geysermc/geyser/api/event/downstream/DownstreamSessionInitializeEvent.java
+@@ -0,0 +1,59 @@
++/*
++ * Copyright (c) 2019-2026 GeyserMC. http://geysermc.org
++ *
++ * Permission is hereby granted, free of charge, to any person obtaining a copy
++ * of this software and associated documentation files (the "Software"), to deal
++ * in the Software without restriction, including without limitation the rights
++ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
++ * copies of the Software, and to permit persons to whom the Software is
++ * furnished to do so, subject to the following conditions:
++ *
++ * The above copyright notice and this permission notice shall be included in
++ * all copies or substantial portions of the Software.
++ *
++ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
++ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
++ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
++ * THE SOFTWARE.
++ *
++ * @author GeyserMC
++ * @link https://github.com/GeyserMC/Geyser
++ */
++
++package org.geysermc.geyser.api.event.downstream;
++
++import org.geysermc.geyser.api.connection.GeyserConnection;
++import org.geysermc.geyser.api.event.connection.ConnectionEvent;
++import org.geysermc.mcprotocollib.network.ClientSession;
++
++import java.util.Objects;
++
++/**
++ * Called after Geyser creates the Java downstream session and registers its
++ * protocol listener, but before Geyser registers its packet translator or
++ * starts the downstream connection.
++ *
++ * <p>Extensions may register session listeners during this event. They must
++ * not connect, replace, or close the downstream session.</p>
++ */
++public final class DownstreamSessionInitializeEvent extends ConnectionEvent {
++    private final ClientSession downstreamSession;
++
++    public DownstreamSessionInitializeEvent(GeyserConnection connection, ClientSession downstreamSession) {
++        super(connection);
++        this.downstreamSession = Objects.requireNonNull(downstreamSession, "downstreamSession");
++    }
++
++    /**
++     * Returns the newly created MCProtocolLib client session.
++     *
++     * @return the downstream session
++     */
++    public ClientSession downstreamSession() {
++        return this.downstreamSession;
++    }
++}
+diff --git a/core/src/main/java/org/geysermc/geyser/session/GeyserSession.java b/core/src/main/java/org/geysermc/geyser/session/GeyserSession.java
+index 0000000..0000000 100644
+--- a/core/src/main/java/org/geysermc/geyser/session/GeyserSession.java
++++ b/core/src/main/java/org/geysermc/geyser/session/GeyserSession.java
+@@ -120,6 +120,7 @@
+ import org.geysermc.geyser.api.event.bedrock.SessionDisconnectEvent;
+ import org.geysermc.geyser.api.event.bedrock.SessionLoginEvent;
++import org.geysermc.geyser.api.event.downstream.DownstreamSessionInitializeEvent;
+ import org.geysermc.geyser.api.network.RemoteServer;
+@@ -1550,8 +1551,14 @@
+         // MCPL listener comes first to handle protocol state switching before Geyser translates packets
+         downstream.addListener(new ClientListener(HandshakeIntent.LOGIN, Boolean.getBoolean("Geyser.ValidateDecompression")));
++
++        // Extensions may need to install an ordered listener before Geyser starts the downstream connection.
++        // Keep this event between ClientListener and GeyserSessionAdapter.
++        GeyserImpl.getInstance().eventBus().fire(new DownstreamSessionInitializeEvent(this, downstream));
++
+         // Geyser adapter second to ensure translating packets in the correct states
+         downstream.addListener(new GeyserSessionAdapter(this));
+ 
+         downstream.setFlag(BuiltinFlags.CLIENT_TRANSFERRING, loginEvent.transferring());
+         downstream.connect(false);
