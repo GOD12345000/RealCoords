@@ -1,6 +1,6 @@
 # Geyser Downstream Initialization Hook Proposal
 
-Status: proposal only. This document does not modify Geyser or enable packet transformation.
+Historical proposal. This document is retained for design history only. The current branch does not require a Geyser patch; see [startup-agent.md](startup-agent.md). It does not enable coordinate transformation.
 
 ## Target
 
