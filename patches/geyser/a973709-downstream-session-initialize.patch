@@ -48,9 +48,9 @@ new file mode 100644
 +import java.util.Objects;
 +
 +/**
-+ * Called after Geyser creates the Java downstream session and registers its
-+ * protocol listener, but before Geyser registers its packet translator or
-+ * starts the downstream connection.
++ * Called after Geyser creates and configures the Java downstream session,
++ * but before Geyser registers its protocol listener or packet translator,
++ * and before the downstream connection starts.
 + *
 + * <p>Extensions may register session listeners during this event. They must
 + * not connect, replace, or close the downstream session.</p>
