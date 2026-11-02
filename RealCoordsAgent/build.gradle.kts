@@ -46,7 +46,7 @@ tasks.jar {
 }
 
 tasks.shadowJar {
-    archiveClassifier.set("")
+    archiveClassifier.set("all")
     manifest {
         attributes(
             "Premain-Class" to "dev.realcoords.agent.RealCoordsAgent",
