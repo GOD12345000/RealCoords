@@ -56,7 +56,7 @@ Geyser deliberately adds listeners in this order:
 
 The first listener manages login/protocol state transitions. The second performs Geyser packet translation in `packetReceived` by calling `Registries.JAVA_PACKET_TRANSLATORS.translate(...)`.
 
-A RealCoords listener must execute after `ClientListener` has handled state transitions, but before `GeyserSessionAdapter` translates the packet. Outbound packet transformation can use `PacketSendingEvent.setPacket`, provided the listener is ordered before the packet is serialized.
+The key additional detail is that `ClientListener.connected(ConnectedEvent)` immediately sends the Java handshake and login-start packets. `NetworkSession.channelActive()` invokes `ConnectedEvent` listeners synchronously in registration order. Therefore a RealCoords `SessionAdapter` registered after `ClientListener` is too late: the initial outbound handshake is already sent before RealCoords gets its callback. RealCoords must be the first listener, ahead of `ClientListener`, and its `connected()` callback must install the Netty duplex handler before returning. The handler then intercepts decoded inbound packets before they reach the manager and outbound packet writes before encoding; it does not need to participate in MCProtocolLib's packet listener order.
 
 ### Threading caveat
 
@@ -90,12 +90,12 @@ At the Geyser `a973709` call site, the relevant order is:
 3. Add Geyser `GeyserSessionAdapter`.
 4. Call `downstream.connect(false)`.
 
-MCProtocolLib `26.3` confirms that `NetworkSession.channelActive()` stores the channel, synchronously calls `ConnectedEvent` on the registered listeners, and only then flushes the pending outbound packet queue. The `MinecraftChannelInitializer` installs the packet codec and then the `NetworkSession` manager handler.
+MCProtocolLib `26.3` confirms that `NetworkSession.channelActive()` stores the channel and synchronously calls `ConnectedEvent` on the registered listeners. Importantly, `ClientListener.connected()` sends the handshake and login-start packets immediately from its callback; these sends occur before `channelActive()` reaches its later pending-queue flush. The `MinecraftChannelInitializer` installs the packet codec and then the `NetworkSession` manager handler.
 
-A custom `SessionAdapter` registered between `ClientListener` and `GeyserSessionAdapter` therefore has two useful guarantees:
+A custom `SessionAdapter` registered as the first listener therefore has the required guarantee:
 
-- Its `connected(ConnectedEvent)` callback runs after the channel and manager handler exist, but before queued handshake packets are flushed.
-- A duplex handler inserted immediately before the `NetworkSession` manager sees decoded inbound packet objects before listener dispatch and outbound packet objects before packet encoding.
+- Its `connected(ConnectedEvent)` callback runs after the channel and manager handler exist, but before `ClientListener.connected()` sends the initial handshake.
+- A duplex handler inserted immediately before `NetworkConstants.MANAGER_NAME` sees decoded inbound packet objects before MCProtocolLib listener dispatch and outbound packet objects before packet encoding.
 
 The same reasoning applies to `LocalSession` because it inherits `ClientNetworkSession` and delegates channel initialization to the same initializer.
 
@@ -105,12 +105,12 @@ The earlier tick-loop polling candidate is rejected. It has no happens-before gu
 
 The deterministic design is now:
 
-1. Add a narrow downstream-initialization hook in Geyser's `connectDownstream()` after `ClientListener` is added and before `GeyserSessionAdapter` is added.
-2. During that synchronous callback, RealCoords registers a MCProtocolLib `SessionAdapter` on the provided downstream session.
-3. In `connected(ConnectedEvent)`, RealCoords inserts the duplex packet handler immediately before the `NetworkSession` pipeline handler.
+1. Add a narrow downstream-initialization hook in Geyser's `connectDownstream()` after the downstream session is created and configured, but before `ClientListener` is registered.
+2. During that synchronous callback, RealCoords registers a MCProtocolLib `SessionAdapter` as the first listener on the provided downstream session.
+3. In `connected(ConnectedEvent)`, RealCoords inserts the duplex packet handler immediately before the `NetworkSession` pipeline handler. This executes before `ClientListener.connected()` sends the initial handshake.
 4. If the expected handler is missing, the channel is already active before registration, or insertion fails, RealCoords fails closed and reports a clear diagnostic. It must not silently fall back to late installation.
 
-The public API shape still needs a deliberate decision. At this Geyser commit, `api/build.gradle.kts` does not depend on MCProtocolLib or Netty; it only exposes the base API, math, and JetBrains annotations. Exposing `ClientSession` directly from a new public API event would therefore add MCProtocolLib as a published API dependency. That is technically straightforward but increases API coupling. The patch proposal should compare this minimal option with a narrow Geyser-owned SPI that hides MCProtocolLib and Netty types, then select the smallest stable contract that still permits ordered listener registration and early channel installation.
+The proposed public API exposes MCProtocolLib `ClientSession`, which requires adding the existing `libs.mcprotocollib` version-catalog dependency to the API module. This intentionally adds MCProtocolLib as a published API dependency. A Geyser-owned SPI could hide MCProtocolLib and Netty types, but would need to provide equivalent ordered listener registration and channel access; that would be a larger abstraction. The current patch draft chooses the smaller direct contract, subject to review of Geyser maintainers' API compatibility preferences.
 
 No production packet transformation should be implemented until the hook patch is built against the exact Geyser revision and tested for both TCP and LocalSession paths.
 
