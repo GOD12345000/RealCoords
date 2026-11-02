@@ -192,35 +192,30 @@ final class ShiftSession {
                 // Java→Geyser 已先扣除原點；保留小座標，不能再轉一次。
                 onLocalPosition(position, m.getRotation());
             } else {
-                trackEntity(m.getRuntimeEntityId(), position, m.getRotation(), m.isOnGround());
-                m.setPosition(toB(position));
+                // Entity absolute positions are localized in javaInbound while still double precision.
+                trackEntity(m.getRuntimeEntityId(), toR(position), m.getRotation(), m.isOnGround());
             }
         } else if (p instanceof MoveEntityAbsolutePacket m) {
-            trackEntity(m.getRuntimeEntityId(), m.getPosition(), m.getRotation(), m.isOnGround());
-            m.setPosition(toB(m.getPosition()));
+            // Do not subtract the origin here: Java absolute positions were shifted before
+            // Geyser converted them to Bedrock float coordinates.
+            trackEntity(m.getRuntimeEntityId(), toR(m.getPosition()), m.getRotation(), m.isOnGround());
         } else if (p instanceof MoveEntityDeltaPacket d) {
+            // Relative deltas are vectors, not world positions. Never shift them by the origin.
             Ent e = entities.get(d.getRuntimeEntityId());
-            Set<MoveEntityDeltaPacket.Flag> f = d.getFlags();
-            if (f.contains(MoveEntityDeltaPacket.Flag.HAS_X)) {
-                if (e != null) e.x = d.getX();
-                d.setX(d.getX() - offX);
-            }
-            if (f.contains(MoveEntityDeltaPacket.Flag.HAS_Y) && e != null) e.y = d.getY();
-            if (f.contains(MoveEntityDeltaPacket.Flag.HAS_Z)) {
-                if (e != null) e.z = d.getZ();
-                d.setZ(d.getZ() - offZ);
+            Set<MoveEntityDeltaPacket.Flag> flags = d.getFlags();
+            if (e != null) {
+                if (flags.contains(MoveEntityDeltaPacket.Flag.HAS_X)) e.x += d.getX();
+                if (flags.contains(MoveEntityDeltaPacket.Flag.HAS_Y)) e.y += d.getY();
+                if (flags.contains(MoveEntityDeltaPacket.Flag.HAS_Z)) e.z += d.getZ();
             }
         } else if (p instanceof AddEntityPacket a) {
-            trackEntity(a.getRuntimeEntityId(), a.getPosition(), null, false);
-            a.setPosition(toB(a.getPosition()));
+            trackEntity(a.getRuntimeEntityId(), toR(a.getPosition()), null, false);
             metaShift(a.getMetadata());
         } else if (p instanceof AddPlayerPacket a) {
-            trackEntity(a.getRuntimeEntityId(), a.getPosition(), null, false);
-            a.setPosition(toB(a.getPosition()));
+            trackEntity(a.getRuntimeEntityId(), toR(a.getPosition()), null, false);
             metaShift(a.getMetadata());
         } else if (p instanceof AddItemEntityPacket a) {
-            trackEntity(a.getRuntimeEntityId(), a.getPosition(), null, false);
-            a.setPosition(toB(a.getPosition()));
+            trackEntity(a.getRuntimeEntityId(), toR(a.getPosition()), null, false);
             metaShift(a.getMetadata());
         } else if (p instanceof AddHangingEntityPacket a) {
             trackEntity(a.getRuntimeEntityId(), a.getPosition(), null, false);
@@ -798,6 +793,31 @@ final class ShiftSession {
     }
 
     Object javaInbound(Object packet) {
+        // Shift absolute entity positions before Geyser narrows them to Bedrock floats.
+        if (packet instanceof org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundAddEntityPacket p) {
+            double shiftedX = p.getX() - offX;
+            double shiftedZ = p.getZ() - offZ;
+            if (shiftedX != p.getX() || shiftedZ != p.getZ()) {
+                debugRate("java-entity-spawn", String.format(
+                        "[RealCoords][ENTITY SPAWN IN] %s id=%d java=(%.4f, %.4f) -> local=(%.4f, %.4f) offset=(%d,%d)",
+                        name(), p.getEntityId(), p.getX(), p.getZ(), shiftedX, shiftedZ, offX, offZ), 1000);
+                return p.withX(shiftedX).withZ(shiftedZ);
+            }
+        }
+        if (packet instanceof org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundTeleportEntityPacket p) {
+            org.cloudburstmc.math.vector.Vector3d v = p.getPosition();
+            List<org.geysermc.mcprotocollib.protocol.data.game.entity.player.PositionElement> relative = p.getRelatives();
+            boolean relX = relative.contains(org.geysermc.mcprotocollib.protocol.data.game.entity.player.PositionElement.X);
+            boolean relZ = relative.contains(org.geysermc.mcprotocollib.protocol.data.game.entity.player.PositionElement.Z);
+            double shiftedX = relX ? v.getX() : v.getX() - offX;
+            double shiftedZ = relZ ? v.getZ() : v.getZ() - offZ;
+            if (shiftedX != v.getX() || shiftedZ != v.getZ()) {
+                debugRate("java-entity-teleport", String.format(
+                        "[RealCoords][ENTITY TELEPORT IN] %s id=%d java=(%.4f, %.4f) -> local=(%.4f, %.4f) relative=(%s,%s) offset=(%d,%d)",
+                        name(), p.getId(), v.getX(), v.getZ(), shiftedX, shiftedZ, relX, relZ, offX, offZ), 1000);
+                return p.withPosition(org.cloudburstmc.math.vector.Vector3d.from(shiftedX, v.getY(), shiftedZ));
+            }
+        }
         if (packet instanceof org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.player.ClientboundPlayerPositionPacket p) {
             org.cloudburstmc.math.vector.Vector3d v = p.getPosition();
             List<org.geysermc.mcprotocollib.protocol.data.game.entity.player.PositionElement> relative = p.getRelatives();
