@@ -8,7 +8,6 @@ import org.cloudburstmc.nbt.NBTInputStream;
 import org.cloudburstmc.nbt.NBTOutputStream;
 import org.cloudburstmc.nbt.NbtMap;
 import org.cloudburstmc.nbt.NbtUtils;
-import org.geysermc.geyser.api.extension.ExtensionLogger;
 
 /**
  * LevelChunk 的資料尾端是一串網路格式 NBT（區塊內嵌的方塊實體，座標是絕對值）。
@@ -17,7 +16,7 @@ import org.geysermc.geyser.api.extension.ExtensionLogger;
 final class ChunkRewriter {
     private ChunkRewriter() {}
 
-    static byte[] rewrite(byte[] data, int offX, int offZ, ShiftConfig cfg, ExtensionLogger log) {
+    static byte[] rewrite(byte[] data, int offX, int offZ, ShiftConfig cfg, RealCoordsLog log) {
         if (offX == 0 && offZ == 0) return data;
         int tail = findTail(data);
         if (tail >= data.length) return data;   // 此區塊沒有方塊實體
