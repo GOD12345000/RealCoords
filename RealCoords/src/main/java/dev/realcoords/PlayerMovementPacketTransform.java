@@ -2,11 +2,21 @@ package dev.realcoords;
 
 import org.cloudburstmc.math.vector.Vector3d;
 import org.cloudburstmc.math.vector.Vector3i;
+import org.geysermc.mcprotocollib.protocol.data.game.level.block.BlockChangeEntry;
 import org.geysermc.mcprotocollib.network.packet.Packet;
 import org.geysermc.mcprotocollib.protocol.data.game.entity.player.PositionElement;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.player.ClientboundPlayerPositionPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundAddEntityPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundTeleportEntityPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundLevelChunkWithLightPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundForgetLevelChunkPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundLightUpdatePacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundBlockUpdatePacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundSectionBlocksUpdatePacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundBlockEntityDataPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundBlockEventPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundLevelEventPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundExplodePacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundMovePlayerPosPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundMovePlayerPosRotPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.level.ServerboundAcceptTeleportationPacket;
@@ -40,6 +50,55 @@ public final class PlayerMovementPacketTransform {
      * Relative X/Z components are deltas and must remain unchanged.
      */
     public static Packet toLocal(Packet packet, CoordinateTransform origin) {
+        if (packet instanceof ClientboundLevelChunkWithLightPacket chunkPacket) {
+            return chunkPacket
+                    .withX(origin.toLocalChunkX(chunkPacket.getX()))
+                    .withZ(origin.toLocalChunkZ(chunkPacket.getZ()));
+        }
+        if (packet instanceof ClientboundForgetLevelChunkPacket forgetPacket) {
+            return forgetPacket
+                    .withX(origin.toLocalChunkX(forgetPacket.getX()))
+                    .withZ(origin.toLocalChunkZ(forgetPacket.getZ()));
+        }
+        if (packet instanceof ClientboundLightUpdatePacket lightPacket) {
+            return lightPacket
+                    .withX(origin.toLocalChunkX(lightPacket.getX()))
+                    .withZ(origin.toLocalChunkZ(lightPacket.getZ()));
+        }
+        if (packet instanceof ClientboundBlockUpdatePacket blockUpdatePacket) {
+            BlockChangeEntry entry = blockUpdatePacket.getEntry();
+            return blockUpdatePacket.withEntry(new BlockChangeEntry(
+                    toLocalBlockPosition(entry.getPosition(), origin), entry.getBlock()
+            ));
+        }
+        if (packet instanceof ClientboundSectionBlocksUpdatePacket sectionUpdatePacket) {
+            BlockChangeEntry[] entries = sectionUpdatePacket.getEntries();
+            BlockChangeEntry[] localEntries = new BlockChangeEntry[entries.length];
+            for (int i = 0; i < entries.length; i++) {
+                localEntries[i] = new BlockChangeEntry(
+                        toLocalBlockPosition(entries[i].getPosition(), origin), entries[i].getBlock()
+                );
+            }
+            return sectionUpdatePacket
+                    .withChunkX(origin.toLocalChunkX(sectionUpdatePacket.getChunkX()))
+                    .withChunkZ(origin.toLocalChunkZ(sectionUpdatePacket.getChunkZ()))
+                    .withEntries(localEntries);
+        }
+        if (packet instanceof ClientboundBlockEntityDataPacket blockEntityPacket) {
+            return blockEntityPacket.withPosition(toLocalBlockPosition(blockEntityPacket.getPosition(), origin));
+        }
+        if (packet instanceof ClientboundBlockEventPacket blockEventPacket) {
+            return blockEventPacket.withPosition(toLocalBlockPosition(blockEventPacket.getPosition(), origin));
+        }
+        if (packet instanceof ClientboundLevelEventPacket levelEventPacket) {
+            return levelEventPacket.withPosition(toLocalBlockPosition(levelEventPacket.getPosition(), origin));
+        }
+        if (packet instanceof ClientboundExplodePacket explodePacket) {
+            Vector3d center = explodePacket.getCenter();
+            return explodePacket.withCenter(Vector3d.from(
+                    origin.toLocalX(center.getX()), center.getY(), origin.toLocalZ(center.getZ())
+            ));
+        }
         if (packet instanceof ClientboundAddEntityPacket spawnPacket) {
             return spawnPacket
                     .withX(origin.toLocalX(spawnPacket.getX()))
@@ -130,6 +189,14 @@ public final class PlayerMovementPacketTransform {
                     .withZ(origin.toRealZ(positionRotationPacket.getZ()));
         }
         return packet;
+    }
+
+    private static Vector3i toLocalBlockPosition(Vector3i realPosition, CoordinateTransform origin) {
+        return Vector3i.from(
+                origin.toLocalBlockX(realPosition.getX()),
+                realPosition.getY(),
+                origin.toLocalBlockZ(realPosition.getZ())
+        );
     }
 
     private static Vector3i toRealBlockPosition(Vector3i localPosition, CoordinateTransform origin) {
