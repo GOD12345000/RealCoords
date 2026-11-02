@@ -5,12 +5,12 @@ on:
     branches: [main, feature/coordinate-origin-rebasing]
     paths:
       - "RealCoords/**"
-      - "patches/geyser/**"
+      - "RealCoordsAgent/**"
       - ".github/workflows/build.yml"
   pull_request:
     paths:
       - "RealCoords/**"
-      - "patches/geyser/**"
+      - "RealCoordsAgent/**"
       - ".github/workflows/build.yml"
   workflow_dispatch:
 
@@ -23,13 +23,6 @@ jobs:
     steps:
       - name: Checkout RealCoords
         uses: actions/checkout@v4
-
-      - name: Checkout pinned Geyser source
-        uses: actions/checkout@v4
-        with:
-          repository: GeyserMC/Geyser
-          ref: a9737092e526996c6e6f51707ff4cf44a8b4b3d2
-          path: geyser
 
       - name: Set up Java 21
         uses: actions/setup-java@v5
@@ -46,28 +39,22 @@ jobs:
         run: |
           test -f RealCoords/build.gradle.kts
           test -f RealCoords/gradle.properties
+          test -f RealCoordsAgent/build.gradle.kts
+          test -f RealCoordsAgent/src/main/java/dev/realcoords/agent/RealCoordsAgent.java
           test -f RealCoords/src/main/resources/extension.yml
-          test -d RealCoords/src/main/java
 
-      - name: Apply and compile pinned Geyser hook
-        working-directory: geyser
-        run: |
-          git apply --check ../patches/geyser/a973709-downstream-session-initialize.patch
-          git apply ../patches/geyser/a973709-downstream-session-initialize.patch
-          ./gradlew --no-daemon :api:jar :core:compileJava
+      - name: Build startup agent
+        run: gradle --no-daemon -p RealCoordsAgent clean build
 
-      - name: Build and test RealCoords against patched Geyser API
-        run: |
-          API_JAR="$(find geyser/api/build/libs -maxdepth 1 -type f -name 'api-*.jar' ! -name '*sources*' | head -n 1)"
-          test -n "$API_JAR"
-          gradle --no-daemon -p RealCoords \
-            -PgeyserPatchedApiJar="$GITHUB_WORKSPACE/$API_JAR" \
-            clean build
+      - name: Build and test extension against official Geyser API
+        run: gradle --no-daemon -p RealCoords clean build
 
-      - name: Upload JAR
+      - name: Upload runtime artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: RealCoords-JAR
-          path: RealCoords/build/libs/*.jar
+          name: RealCoords-runtime
+          path: |
+            RealCoords/build/libs/*.jar
+            RealCoordsAgent/build/libs/*-all.jar
           if-no-files-found: error
           retention-days: 14
