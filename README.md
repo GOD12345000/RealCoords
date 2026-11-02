@@ -63,7 +63,7 @@ Patch 目前只存在 RealCoords repository，尚未套用到 Geyser fork，也�
 gradle --no-daemon clean build
 ```
 
-目前尚未確認這個分支的完整 build 與測試結果。建置成功也不代表 downstream hook 或座標封包轉換已經通過整合測試。
+目前 GitHub Actions 已在 Java 21 環境成功執行 `gradle --no-daemon clean build`，包含目前的 JUnit 測試。這只證明 RealCoords 現有程式可建置；downstream hook、Geyser Patch 與座標封包轉換仍需分開完成編譯及整合測試。\n\n- [RealCoords Build workflow](https://github.com/GOD12345000/RealCoords/actions/workflows/build.yml)\n- [Geyser Patch validation workflow](https://github.com/GOD12345000/RealCoords/actions/workflows/validate-geyser-hook.yml)
 
 在啟用任何座標轉換前，至少需要：
 
