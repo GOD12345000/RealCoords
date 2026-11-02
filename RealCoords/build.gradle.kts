@@ -28,6 +28,7 @@ dependencies {
     compileOnly("org.geysermc.api:base-api:1.0.3")
     compileOnly("org.cloudburstmc.math:immutable:2.0")
     compileOnly("org.jetbrains:annotations:24.0.0")
+    compileOnly("org.geysermc.event:events:1.1-SNAPSHOT")
     // Public types exposed by DownstreamSessionInitializeEvent and the passive packet bridge.
     compileOnly("org.geysermc.mcprotocollib:protocol:26.3")
     implementation("org.yaml:snakeyaml:2.2")
