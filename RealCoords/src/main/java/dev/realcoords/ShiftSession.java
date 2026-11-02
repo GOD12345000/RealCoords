@@ -136,19 +136,23 @@ final class ShiftSession {
     }
 
     private Vector3f toB(Vector3f v) {
-        return v == null ? null : coordinates().toBedrock(v);
+        CoordinateTransform t = coordinates();
+        return v == null ? null : Vector3f.from(t.toBedrockX(v.getX()), v.getY(), t.toBedrockZ(v.getZ()));
     }
 
     private Vector3f toR(Vector3f v) {
-        return v == null ? null : coordinates().toJava(v);
+        CoordinateTransform t = coordinates();
+        return v == null ? null : Vector3f.from(t.toJavaX(v.getX()), v.getY(), t.toJavaZ(v.getZ()));
     }
 
     private Vector3i toB(Vector3i v) {
-        return v == null ? null : coordinates().toBedrock(v);
+        CoordinateTransform t = coordinates();
+        return v == null ? null : Vector3i.from(t.toBedrockX(v.getX()), v.getY(), t.toBedrockZ(v.getZ()));
     }
 
     private Vector3i toR(Vector3i v) {
-        return v == null ? null : coordinates().toJava(v);
+        CoordinateTransform t = coordinates();
+        return v == null ? null : Vector3i.from(t.toJavaX(v.getX()), v.getY(), t.toJavaZ(v.getZ()));
     }
 
     private ShiftConfig.Dim dimCfg() {
@@ -221,8 +225,13 @@ final class ShiftSession {
             a.setPosition(toB(a.getPosition()));
         } else if (p instanceof UpdateSubChunkBlocksPacket u) {
             recordSubChunkBlocks(u);
-            BedrockPacketCoordinateTransformer.transformOutbound(u, new CoordinateTransform(offX, offZ));
-        } else if (BedrockPacketCoordinateTransformer.transformOutbound(p, new CoordinateTransform(offX, offZ))) {
+            BedrockPacketCoordinateTransformer.transformOutbound(u, coordinates());
+        } else if (p instanceof LevelEventGenericPacket event) {
+            if (!BedrockPacketCoordinateTransformer.transformOutbound(event, coordinates())) {
+                warnOnce("generic-event-" + event.getType(),
+                        "未識別的 LevelEventGenericPacket 座標結構: " + event.getType());
+            }
+        } else if (BedrockPacketCoordinateTransformer.transformOutbound(p, coordinates())) {
             // Extended packet coordinate schemas are handled by the dedicated transformer.
         } else if (p instanceof RemoveEntityPacket r) {
             entities.remove(r.getUniqueEntityId());

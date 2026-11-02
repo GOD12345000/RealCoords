@@ -30,7 +30,7 @@ final class BedrockPacketCoordinateTransformer {
 
     static boolean transformOutbound(BedrockPacket packet, CoordinateTransform transform) {
         if (packet instanceof UpdateSubChunkBlocksPacket update) {
-            update.setPosition(transform.toBedrock(update.getPosition()));
+            update.setPosition(toBedrock(update.getPosition(), transform));
             shiftBlockChanges(update.getStandardBlocks(), transform);
             shiftBlockChanges(update.getExtraBlocks(), transform);
             return true;
@@ -41,7 +41,7 @@ final class BedrockPacketCoordinateTransformer {
             // offset from the center and must remain unchanged.
             Vector3i center = subChunk.getCenterPosition();
             if (center != null) {
-                subChunk.setCenterPosition(transform.toBedrock(center));
+                subChunk.setCenterPosition(toBedrock(center, transform));
             }
             return true;
         }
@@ -61,7 +61,7 @@ final class BedrockPacketCoordinateTransformer {
                 List<MapTrackedObject> shifted = new ArrayList<>(objects.size());
                 for (MapTrackedObject object : objects) {
                     if (object.getType() == MapTrackedObject.Type.BLOCK && object.getPosition() != null) {
-                        shifted.add(new MapTrackedObject(transform.toBedrock(object.getPosition())));
+                        shifted.add(new MapTrackedObject(toBedrock(object.getPosition(), transform)));
                     } else {
                         shifted.add(object);
                     }
@@ -89,12 +89,20 @@ final class BedrockPacketCoordinateTransformer {
         return false;
     }
 
+    private static Vector3i toBedrock(Vector3i position, CoordinateTransform transform) {
+        return position == null ? null : Vector3i.from(
+                transform.toBedrockX(position.getX()),
+                position.getY(),
+                transform.toBedrockZ(position.getZ())
+        );
+    }
+
     private static void shiftBlockChanges(List<BlockChangeEntry> entries, CoordinateTransform transform) {
         ListIterator<BlockChangeEntry> iterator = entries.listIterator();
         while (iterator.hasNext()) {
             BlockChangeEntry entry = iterator.next();
             iterator.set(new BlockChangeEntry(
-                    transform.toBedrock(entry.getPosition()),
+                    toBedrock(entry.getPosition(), transform),
                     entry.getDefinition(),
                     entry.getUpdateFlags(),
                     entry.getMessageEntityId(),

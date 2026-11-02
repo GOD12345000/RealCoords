@@ -2,7 +2,7 @@ name: Build RealCoords
 
 on:
   push:
-    branches: [main]
+    branches: ["**"]
     paths:
       - "RealCoords/**"
       - ".github/workflows/build.yml"

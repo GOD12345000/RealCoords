@@ -1,8 +1,5 @@
 package dev.realcoords;
 
-import org.cloudburstmc.math.vector.Vector3f;
-import org.cloudburstmc.math.vector.Vector3i;
-
 /**
  * Immutable conversion between the Java/Geyser world coordinates and the
  * Bedrock client's shifted coordinate space.
@@ -42,19 +39,4 @@ final class CoordinateTransform {
         return realChunkZ - Math.floorDiv(offsetZ, 16);
     }
 
-    Vector3f toBedrock(Vector3f real) {
-        return Vector3f.from(toBedrockX(real.getX()), real.getY(), toBedrockZ(real.getZ()));
-    }
-
-    Vector3f toJava(Vector3f bedrock) {
-        return Vector3f.from(toJavaX(bedrock.getX()), bedrock.getY(), toJavaZ(bedrock.getZ()));
-    }
-
-    Vector3i toBedrock(Vector3i real) {
-        return Vector3i.from(toBedrockX(real.getX()), real.getY(), toBedrockZ(real.getZ()));
-    }
-
-    Vector3i toJava(Vector3i bedrock) {
-        return Vector3i.from(toJavaX(bedrock.getX()), bedrock.getY(), toJavaZ(bedrock.getZ()));
-    }
 }
