@@ -1,0 +1,7 @@
+id: realcoords
+name: RealCoords
+main: dev.realcoords.RealCoordsExtension
+api: 2.12.1
+version: 1.0.0
+authors:
+  - RealCoords

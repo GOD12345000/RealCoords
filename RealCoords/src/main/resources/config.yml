@@ -1,0 +1,67 @@
+# RealCoords：基岩版玩家的「浮動原點」與真實座標顯示
+# 修改後需重啟 Geyser（或重新載入擴充）。
+
+origin-shift:
+  enabled: true
+  # 偏移量的對齊單位，必須是 16 的倍數（會自動修正）
+  alignment: 256
+  # 基岩版客戶端看到的座標超過此值，就把原點移到玩家附近
+  trigger-distance: 50000
+  # 真實座標回到此範圍內（且目前有偏移）才歸零。必須小於 trigger-distance（遲滯）
+  reset-distance: 20000
+  # 兩次換原點的最短間隔（20 tick = 1 秒）
+  cooldown-ticks: 100
+  # 換原點／伺服器傳送後，等待客戶端到位的最長時間
+  ack-timeout-ticks: 60
+  # 客戶端位置與預期位置相差在此範圍內視為「已到位」（格）
+  ack-tolerance: 4.0
+  # 每個維度可單獨覆寫 enabled / trigger-distance / reset-distance / alignment
+  dimensions:
+    overworld: { enabled: true }
+    the_nether: { enabled: true, trigger-distance: 6000, reset-distance: 2500, alignment: 128 }
+    the_end: { enabled: true }
+
+safety:
+  # 防呆閘：客戶端單次回報的位置與上一個已知真實座標相差超過此值，
+  # 且不在等待傳送到位的狀態，就丟棄該座標（避免被傳送到 0,0 附近）
+  max-serverbound-jump: 64.0
+  # 觸發防呆閘後，補送校正封包的最短間隔
+  correction-interval-ticks: 10
+  # 輸出較詳細的除錯訊息（首次攔截、換原點細節、管線結構）
+  debug-log: false
+
+chunk-cache:
+  # 換原點時要重送區塊，所以需要在記憶體保存已送出的區塊（原始真實座標版）
+  enabled: true
+  # 以 deflate 壓縮保存，省記憶體、略增 CPU
+  compress: true
+  # 每位玩家最多保存的區塊數
+  max-chunks: 2500
+  # 距離觸發值還有多遠（格）就開始保存區塊。必須大於伺服器視距（格）
+  activate-margin: 1500
+  # 換原點後每個 tick 重送幾個區塊
+  resend-per-tick: 24
+  # 超出視距多少個區塊後從快取移除
+  evict-margin-chunks: 4
+
+# 方塊實體 NBT 中需要平移的鍵（對 TileEntity 與區塊內嵌的方塊實體都有效）
+nbt-shift-keys:
+  x: [x, pistonPosX]
+  z: [z, pistonPosZ]
+  triples: [AttachedBlocks, BreakBlocks]   # [x,y,z,x,y,z,...] 形式的整數列表
+
+actionbar:
+  enabled: true
+  # 隱藏原版的座標顯示（攔截 showcoordinates 遊戲規則）
+  hide-vanilla-coordinates: true
+  interval-ticks: 10
+  # 可用 & 或 § 色碼。變數：{x} {y} {z} {facing} {dim} {offx} {offz}
+  format: "&fX &e{x}  &fY &e{y}  &fZ &e{z}  &7{facing}"
+  number-format: "%,.1f"
+  # 把 Java 伺服器自己送的 ActionBar 接在座標後面，避免互相蓋掉
+  merge-java-actionbar: true
+  java-actionbar-keep-ms: 3000
+  separator: " &8| &r"
+  # 基岩版回報的是眼睛高度；真實 Y = 回報值 - eye-height
+  eye-height: 1.62
+  facing: ["南 +Z", "西 -X", "北 -Z", "東 +X"]
