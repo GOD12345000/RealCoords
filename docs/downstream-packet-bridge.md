@@ -1,6 +1,6 @@
 # Passive Java Downstream Packet Bridge
 
-Status: implementation added; CI validation against the patched Geyser API is in progress. No coordinate fields are modified.
+Status: implemented and compile-validated against the pinned patched Geyser API. Runtime TCP / LocalSession integration checks are still pending. No coordinate fields are modified.
 
 ## Initialization order
 
@@ -8,7 +8,29 @@ Geyser fires `DownstreamSessionInitializeEvent` after constructing/configuring t
 
 RealCoords registers a `SessionAdapter` during that callback. It is therefore the first MCProtocolLib listener. When `ConnectedEvent` fires, the RealCoords listener runs before `ClientListener.connected()` sends the initial handshake and login-start packets.
 
-## Netty pipeline installation
+## Verified MCProtocolLib pipeline order
+
+The pinned MCProtocolLib channel initializer creates handlers in this order (head to tail):
+
+```text
+... -> encryption -> sizer -> compression -> flow-control
+    -> codec -> flush-handler -> manager
+```
+
+RealCoords inserts its duplex handler immediately before `manager`:
+
+```text
+... -> codec -> flush-handler -> realcoords-bridge -> manager
+```
+
+This placement is intentional:
+
+- **Inbound:** Netty traverses toward the tail. The codec first decodes bytes into MCProtocolLib `Packet` objects; the bridge then sees those decoded packets before the manager dispatches them.
+- **Outbound:** Netty traverses outbound handlers toward the head. A packet written by the session reaches the bridge before the flush handler and codec encode it into bytes.
+
+The bridge therefore sees packet objects in both directions, not raw encrypted/compressed bytes. It must not be moved to the other side of the codec without revisiting these assumptions.
+
+## Installation checks
 
 The adapter verifies all of the following on the channel event loop:
 
@@ -19,9 +41,7 @@ The adapter verifies all of the following on the channel event loop:
 
 It then inserts `realcoords-downstream-packet-bridge` immediately before the manager handler.
 
-At that location the bridge observes decoded inbound MCProtocolLib `Packet` objects before manager dispatch and outbound packet objects before the manager passes them to the codec. The first inbound and outbound packet class names are written at debug level.
-
-Any failed precondition closes the Java downstream session. There is no late-install fallback.
+The first inbound and outbound packet class names are written at debug level. Any failed precondition closes the Java downstream session. There is no late-install fallback.
 
 ## Dedicated logging
 
