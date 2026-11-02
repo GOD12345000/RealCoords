@@ -18,6 +18,12 @@ repositories {
     maven("https://repo.opencollab.dev/maven-snapshots/")
 }
 
+// Tests exercise packet types that the extension compiles against as compileOnly.
+// Expose those dependencies on the test compile and runtime classpaths as well.
+configurations.named("testImplementation") {
+    extendsFrom(configurations.named("compileOnly").get())
+}
+
 dependencies {
     // Compile against the locally patched API when supplied; otherwise use the published Geyser API.
     if (patchedGeyserApiJar.isPresent) {
