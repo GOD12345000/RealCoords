@@ -9,7 +9,7 @@ start = content.index('repositories {')
 end = content.index('\n}\n\ndependencies', start)
 content = content[:start] + '''repositories {
     mavenCentral()
-    maven('https://repo.opencollab.dev/main/')
+    maven("https://repo.opencollab.dev/main/")
 }''' + content[end + 2:]
 build.write_text(content, encoding='utf-8')
 
