@@ -12,7 +12,7 @@ Status: proposal only. This document does not modify Geyser or enable packet tra
 
 Geyser's public `SessionLoginEvent` is fired before the Java downstream session is created. The public `SessionJoinEvent` is too late to guarantee interception before initial Java world packets. Polling the Geyser tick EventLoop is not deterministic relative to MCProtocolLib's independent Netty EventLoop.
 
-At the exact target revision, Geyser creates a `ClientNetworkSession` (or `LocalSession`), registers MCProtocolLib's `ClientListener`, registers `GeyserSessionAdapter`, then calls `connect(false)`. Source inspection of `ClientListener.connected()` shows that it immediately sends the handshake and login-start packets when `ConnectedEvent` fires.
+At the exact target revision, Geyser creates a `ClientNetworkSession` (or `LocalSession`), registers MCProtocolLib's `ClientListener`, registers `GeyserSessionAdapter`, then calls `connect(false)`. Source inspection of `ClientListener.connected()` shows that it immediately sends the handshake and login-start packets when `ConnectedEvent` fires. The proposed event is inserted just before those two listener registrations so RealCoords can register first.
 
 MCProtocolLib's `NetworkSession.channelActive()` fires `ConnectedEvent` synchronously before flushing queued outbound packets. However, listener ordering matters: `ClientListener.connected()` sends the handshake immediately from its own `ConnectedEvent` callback. Therefore a RealCoords adapter registered after `ClientListener` is too late for the first outbound packets. RealCoords must be registered before `ClientListener`, so its `connected()` callback installs the Netty duplex handler before the protocol listener sends the handshake.
 
@@ -77,23 +77,24 @@ This is an intentional public API dependency: consumers compiling against this e
 
 ## Proposed core call site
 
-In `core/src/main/java/org/geysermc/geyser/session/GeyserSession.java`, inside `connectDownstream()`, import the new API event and fire it between the two existing listener registrations:
+In `core/src/main/java/org/geysermc/geyser/session/GeyserSession.java`, inside `connectDownstream()`, import the new API event and fire it before the two existing listener registrations:
 
 ```java
+// Extensions must install listeners before ClientListener sends the initial handshake.
+GeyserImpl.getInstance().eventBus().fireEventElseKick(
+    new DownstreamSessionInitializeEvent(this, downstream), this);
+if (closed) {
+    return;
+}
+
 // MCPL listener comes first to handle protocol state switching before Geyser translates packets
 downstream.addListener(new ClientListener(HandshakeIntent.LOGIN, Boolean.getBoolean("Geyser.ValidateDecompression")));
-
-// Give extensions a deterministic point to register downstream listeners.
-// This must remain before GeyserSessionAdapter and before downstream.connect(false).
-GeyserImpl.getInstance().eventBus().fire(
-    new DownstreamSessionInitializeEvent(this, downstream)
-);
 
 // Geyser adapter second to ensure translating packets in the correct states
 downstream.addListener(new GeyserSessionAdapter(this));
 ```
 
-The event must be fired before `ClientListener` registration. This ordering is essential: `ClientListener.connected()` sends the initial handshake synchronously during `ConnectedEvent`. If RealCoords were registered after it, the first outbound handshake packet would bypass the Netty handler. The event must also remain before `GeyserSessionAdapter` and `connect(false)`. The order is part of the hook contract and must be covered by a regression test or explicit lifecycle test.
+The event must be fired before `ClientListener` registration. This ordering is essential: `ClientListener.connected()` sends the initial handshake and login-start packets synchronously during `ConnectedEvent`. If RealCoords were registered after it, those first outbound packets would bypass the Netty handler. The event must also remain before `GeyserSessionAdapter` and `connect(false)`. Use `fireEventElseKick` and return if the session was closed by a failing subscriber; do not silently continue with an uninitialized hook. The order is part of the hook contract and must be covered by a regression test or explicit lifecycle test.
 
 ## RealCoords listener behavior
 
