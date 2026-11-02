@@ -39,11 +39,6 @@ final class ShiftSession {
     private static final EnumSet<UpdateBlockPacket.Flag> UPD_FLAGS =
             EnumSet.of(UpdateBlockPacket.Flag.NEIGHBORS, UpdateBlockPacket.Flag.NETWORK);
 
-    /** 這些封包含有絕對座標但本版本尚未處理，遇到時提示一次 */
-    private static final Set<String> WATCH = Set.of(
-            "UpdateSubChunkBlocksPacket", "SubChunkPacket", "LevelEventGenericPacket",
-            "MapItemDataPacket", "PositionTrackingDBServerBroadcastPacket", "AddPaintingPacket");
-
     record PosLayer(int x, int y, int z, int layer) {}
 
     record BlockUpd(Vector3i pos, BlockDefinition def, int layer) {}
@@ -136,20 +131,24 @@ final class ShiftSession {
     // 座標轉換
     // =====================================================================
 
+    private CoordinateTransform coordinates() {
+        return new CoordinateTransform(offX, offZ);
+    }
+
     private Vector3f toB(Vector3f v) {
-        return v == null ? null : Vector3f.from((float) (v.getX() - offX), v.getY(), (float) (v.getZ() - offZ));
+        return v == null ? null : coordinates().toBedrock(v);
     }
 
     private Vector3f toR(Vector3f v) {
-        return v == null ? null : Vector3f.from((float) (v.getX() + offX), v.getY(), (float) (v.getZ() + offZ));
+        return v == null ? null : coordinates().toJava(v);
     }
 
     private Vector3i toB(Vector3i v) {
-        return v == null ? null : Vector3i.from(v.getX() - offX, v.getY(), v.getZ() - offZ);
+        return v == null ? null : coordinates().toBedrock(v);
     }
 
     private Vector3i toR(Vector3i v) {
-        return v == null ? null : Vector3i.from(v.getX() + offX, v.getY(), v.getZ() + offZ);
+        return v == null ? null : coordinates().toJava(v);
     }
 
     private ShiftConfig.Dim dimCfg() {
@@ -217,6 +216,14 @@ final class ShiftSession {
             trackEntity(a.getRuntimeEntityId(), a.getPosition(), null, false);
             a.setPosition(toB(a.getPosition()));
             metaShift(a.getMetadata());
+        } else if (p instanceof AddHangingEntityPacket a) {
+            trackEntity(a.getRuntimeEntityId(), a.getPosition(), null, false);
+            a.setPosition(toB(a.getPosition()));
+        } else if (p instanceof UpdateSubChunkBlocksPacket u) {
+            recordSubChunkBlocks(u);
+            BedrockPacketCoordinateTransformer.transformOutbound(u, new CoordinateTransform(offX, offZ));
+        } else if (BedrockPacketCoordinateTransformer.transformOutbound(p, new CoordinateTransform(offX, offZ))) {
+            // Extended packet coordinate schemas are handled by the dedicated transformer.
         } else if (p instanceof RemoveEntityPacket r) {
             entities.remove(r.getUniqueEntityId());
         } else if (p instanceof SetEntityDataPacket s) {
@@ -263,9 +270,6 @@ final class ShiftSession {
                 javaBarMs = System.currentTimeMillis();
                 if (havePos) t.setText(barText(javaBarMs));
             }
-        } else if (WATCH.contains(p.getClass().getSimpleName())) {
-            warnOnce("watch-" + p.getClass().getSimpleName(),
-                    p.getClass().getSimpleName() + " 含有絕對座標，本版本尚未轉換；在偏移狀態下相關功能可能錯位");
         }
     }
 
@@ -624,6 +628,15 @@ final class ShiftSession {
         if (real == null || nbt == null || chunks.isEmpty()) return;
         ChunkEntry e = chunks.get(key(real.getX() >> 4, real.getZ() >> 4));
         if (e != null) e.tiles.put(real, nbt);
+    }
+
+    private void recordSubChunkBlocks(UpdateSubChunkBlocksPacket packet) {
+        for (org.cloudburstmc.protocol.bedrock.data.BlockChangeEntry entry : packet.getStandardBlocks()) {
+            recordBlock(entry.getPosition(), entry.getDefinition(), 0);
+        }
+        for (org.cloudburstmc.protocol.bedrock.data.BlockChangeEntry entry : packet.getExtraBlocks()) {
+            recordBlock(entry.getPosition(), entry.getDefinition(), 1);
+        }
     }
 
     private static byte[] deflate(byte[] in) {

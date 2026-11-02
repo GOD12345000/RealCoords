@@ -19,6 +19,9 @@ dependencies {
     compileOnly("org.geysermc.geyser:api:$geyserVersion")
     compileOnly("org.geysermc.geyser:core:$geyserVersion")
     implementation("org.yaml:snakeyaml:2.2")
+
+    testImplementation("org.junit.jupiter:junit-jupiter:5.11.4")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
 tasks.withType<JavaCompile> {
@@ -32,3 +35,8 @@ tasks.shadowJar {
 }
 
 tasks.build { dependsOn(tasks.shadowJar) }
+
+
+tasks.test {
+    useJUnitPlatform()
+}
