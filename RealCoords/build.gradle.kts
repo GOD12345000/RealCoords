@@ -8,35 +8,26 @@ version = "1.0.0"
 
 val geyserVersion: String by project
 val javaVersion: String by project
-val patchedGeyserApiJar = providers.gradleProperty("geyserPatchedApiJar")
 
 repositories {
-    // Allows building against a locally patched Geyser API/core installed with publishToMavenLocal.
-    mavenLocal()
     mavenCentral()
     maven("https://repo.opencollab.dev/main/")
     maven("https://repo.opencollab.dev/maven-snapshots/")
 }
 
-// Tests exercise packet types that the extension compiles against as compileOnly.
-// Expose those dependencies on the test compile and runtime classpaths as well.
 configurations.named("testImplementation") {
     extendsFrom(configurations.named("compileOnly").get())
 }
 
 dependencies {
-    // Compile against the locally patched API when supplied; otherwise use the published Geyser API.
-    if (patchedGeyserApiJar.isPresent) {
-        compileOnly(files(patchedGeyserApiJar.get()))
-    } else {
-        compileOnly("org.geysermc.geyser:api:$geyserVersion")
-    }
+    // Compile only against the official, unmodified Geyser API.
+    compileOnly("org.geysermc.geyser:api:$geyserVersion")
     compileOnly("org.geysermc.api:base-api:1.0.3")
     compileOnly("org.cloudburstmc.math:immutable:2.0")
     compileOnly("org.jetbrains:annotations:24.0.0")
     compileOnly("org.geysermc.event:events:1.1-SNAPSHOT")
-    // Public types exposed by DownstreamSessionInitializeEvent and the passive packet bridge.
     compileOnly("org.geysermc.mcprotocollib:protocol:26.3")
+
     implementation("org.yaml:snakeyaml:2.2")
 
     testImplementation("org.junit.jupiter:junit-jupiter:5.11.4")
@@ -57,4 +48,6 @@ tasks.shadowJar {
     relocate("org.yaml.snakeyaml", "dev.realcoords.libs.snakeyaml")
 }
 
-tasks.build { dependsOn(tasks.shadowJar) }
+tasks.build {
+    dependsOn(tasks.shadowJar)
+}
