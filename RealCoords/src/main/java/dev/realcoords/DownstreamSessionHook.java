@@ -77,11 +77,11 @@ public final class DownstreamSessionHook extends SessionAdapter {
     }
 
     private static final class PacketBridgeHandler extends ChannelDuplexHandler {
-        private final ExtensionLogger logger;
+        private final RealCoordsLog logger;
         private final AtomicBoolean firstInbound = new AtomicBoolean();
         private final AtomicBoolean firstOutbound = new AtomicBoolean();
 
-        private PacketBridgeHandler(ExtensionLogger logger) {
+        private PacketBridgeHandler(RealCoordsLog logger) {
             this.logger = logger;
         }
 
