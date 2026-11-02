@@ -1,8 +1,7 @@
 diff --git a/api/build.gradle.kts b/api/build.gradle.kts
-index 0000000..0000000 100644
 --- a/api/build.gradle.kts
 +++ b/api/build.gradle.kts
-@@ -5,6 +5,7 @@ dependencies {
+@@ -8,6 +8,7 @@ dependencies {
      api(libs.base.api)
      api(libs.math)
      api(libs.jetbrains.annotations)
@@ -14,7 +13,7 @@ diff --git a/api/src/main/java/org/geysermc/geyser/api/event/downstream/Downstre
 new file mode 100644
 --- /dev/null
 +++ b/api/src/main/java/org/geysermc/geyser/api/event/downstream/DownstreamSessionInitializeEvent.java
-@@ -0,0 +1,59 @@
+@@ -0,0 +1,58 @@
 +/*
 + * Copyright (c) 2019-2026 GeyserMC. http://geysermc.org
 + *
@@ -74,24 +73,26 @@ new file mode 100644
 +    }
 +}
 diff --git a/core/src/main/java/org/geysermc/geyser/session/GeyserSession.java b/core/src/main/java/org/geysermc/geyser/session/GeyserSession.java
-index 0000000..0000000 100644
 --- a/core/src/main/java/org/geysermc/geyser/session/GeyserSession.java
 +++ b/core/src/main/java/org/geysermc/geyser/session/GeyserSession.java
-@@ -120,6 +120,7 @@
+@@ -124,6 +124,7 @@ import org.geysermc.geyser.api.entity.type.player.GeyserPlayerEntity;
  import org.geysermc.geyser.api.event.bedrock.SessionDisconnectEvent;
  import org.geysermc.geyser.api.event.bedrock.SessionLoginEvent;
 +import org.geysermc.geyser.api.event.downstream.DownstreamSessionInitializeEvent;
  import org.geysermc.geyser.api.network.RemoteServer;
-@@ -1550,8 +1551,14 @@
+ import org.geysermc.geyser.api.skin.SkinData;
+@@ -1246,6 +1247,12 @@
          // MCPL listener comes first to handle protocol state switching before Geyser translates packets
          downstream.addListener(new ClientListener(HandshakeIntent.LOGIN, Boolean.getBoolean("Geyser.ValidateDecompression")));
 +
-+        // Extensions may need to install an ordered listener before Geyser starts the downstream connection.
++        // Extensions may need an ordered listener before Geyser starts the downstream connection.
 +        // Keep this event between ClientListener and GeyserSessionAdapter.
-+        GeyserImpl.getInstance().eventBus().fire(new DownstreamSessionInitializeEvent(this, downstream));
++        GeyserImpl.getInstance().eventBus().fireEventElseKick(
++            new DownstreamSessionInitializeEvent(this, downstream), this);
++        if (closed) {
++            return;
++        }
 +
          // Geyser adapter second to ensure translating packets in the correct states
          downstream.addListener(new GeyserSessionAdapter(this));
  
-         downstream.setFlag(BuiltinFlags.CLIENT_TRANSFERRING, loginEvent.transferring());
-         downstream.connect(false);
