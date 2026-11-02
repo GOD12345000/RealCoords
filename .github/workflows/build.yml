@@ -4,16 +4,16 @@ on:
   push:
     branches: [main]
     paths:
-      - "RealCoords/**"
-      - "RealCoords-source.zip"
-      - ".github/workflows/build.yml"
+      - 'RealCoords/**'
+      - 'RealCoords-source.zip'
+      - '.github/workflows/build.yml'
   pull_request:
     paths:
-      - "RealCoords/**"
-      - ".github/workflows/build.yml"
+      - 'RealCoords/**'
+      - '.github/workflows/build.yml'
   workflow_dispatch:
 
-# Write is needed only for the one-time migration of the old source ZIP.
+# Write permission is used only to commit the one-time source migration.
 permissions:
   contents: write
 
@@ -26,8 +26,6 @@ jobs:
         with:
           persist-credentials: true
 
-      # Backward-compatible one-time migration. New forks already contain
-      # the normal source tree and will skip this block.
       - name: Migrate legacy source archive (if present)
         shell: bash
         run: |
@@ -35,86 +33,14 @@ jobs:
             unzip -q RealCoords-source.zip -d .
             test -f RealCoords/build.gradle.kts
             test -d RealCoords/src
-
-            python3 - <<'PY'
-            from pathlib import Path
-
-            # Use the OpenCollab repository that currently hosts Geyser artifacts.
-            build = Path("RealCoords/build.gradle.kts")
-            content = build.read_text(encoding="utf-8")
-            start = content.index("repositories {")
-            end = content.index("\\n}\\n\\ndependencies", start)
-            content = content[:start] + """repositories {
-                mavenCentral()
-                maven("https://repo.opencollab.dev/main/")
-            }""" + content[end + 2:]
-            build.write_text(content, encoding="utf-8")
-
-            # Pin the project defaults to the version used for the verified CI build.
-            props = Path("RealCoords/gradle.properties")
-            props.write_text(
-                "# Build target: Geyser 2.12.1 / Java 21\\n"
-                "geyserVersion=2.12.1-SNAPSHOT\\n"
-                "javaVersion=21\\n",
-                encoding="utf-8",
-            )
-
-            # Use the Geyser API version in extension metadata (not Base API 1.0.0).
-            extension = Path("RealCoords/src/main/resources/extension.yml")
-            ext_text = extension.read_text(encoding="utf-8")
-            ext_text = ext_text.replace("api: 1.0.0", "api: 2.12.1")
-            extension.write_text(ext_text, encoding="utf-8")
-
-            # Apply the Cloudburst Protocol API compatibility edits that were
-            # previously hidden in CI, so the checked-in source is buildable itself.
-            source = Path("RealCoords/src/main/java/dev/realcoords/ShiftSession.java")
-            source_text = source.read_text(encoding="utf-8")
-            old_import = "import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.InventoryTransactionType;"
-            new_import = old_import + chr(10) + "import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.ItemUseTransaction;"
-            if "import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.ItemUseTransaction;" not in source_text:
-                if old_import not in source_text:
-                    raise SystemExit("Could not find InventoryTransactionType import")
-                source_text = source_text.replace(old_import, new_import)
-
-            source_text = source_text.replace("EntityDataTypes.PLAYER_BED_POSITION", "EntityDataTypes.BED_POSITION")
-            source_text = source_text.replace("EntityDataTypes.BLOCK_TARGET", "EntityDataTypes.BLOCK_TARGET_POS")
-
-            method_marker = "    private void onAuthInput(PlayerAuthInputPacket a) {"
-            if "private void invTx(ItemUseTransaction t)" not in source_text:
-                method = """
-                private void invTx(ItemUseTransaction t) {
-                    if (t == null) return;
-                    if (t.getPlayerPosition() != null) t.setPlayerPosition(toR(t.getPlayerPosition()));
-                    // Action type 2 is the block item-interaction transaction.
-                    if (t.getActionType() == 2 && t.getBlockPosition() != null) {
-                        t.setBlockPosition(toR(t.getBlockPosition()));
-                    }
-                }
-
-            """
-                if method_marker not in source_text:
-                    raise SystemExit("Could not find onAuthInput insertion point")
-                source_text = source_text.replace(method_marker, method + method_marker, 1)
-
-            old_action = "it.set(new PlayerBlockActionData(x.getAction(), toR(x.getBlockPosition()), x.getFace()));"
-            if old_action in source_text:
-                source_text = source_text.replace(old_action, "x.setBlockPosition(toR(x.getBlockPosition()));")
-            if "new PlayerBlockActionData(" in source_text:
-                raise SystemExit("Unsupported PlayerBlockActionData constructor remains")
-            if "EntityDataTypes.PLAYER_BED_POSITION" in source_text or "EntityDataTypes.BLOCK_TARGET)" in source_text:
-                raise SystemExit("Outdated EntityDataTypes reference remains")
-            source.write_text(source_text, encoding="utf-8")
-          PY
-
+            python3 .github/scripts/migrate_source.py
             rm RealCoords-source.zip
-            printf 'build/\\n.gradle/\\n' > RealCoords/.gitignore
-
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add RealCoords
-            git add -u
+            printf 'build/\n.gradle/\n' > RealCoords/.gitignore
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add -A
             if ! git diff --cached --quiet; then
-              git commit -m "Move RealCoords source into browsable project files"
+              git commit -m 'Move RealCoords source into browsable project files'
               git push
             fi
           fi
@@ -123,12 +49,12 @@ jobs:
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: "21"
+          java-version: '21'
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: "8.10.2"
+          gradle-version: '8.10.2'
 
       - name: Verify project layout
         run: |
@@ -147,5 +73,3 @@ jobs:
           path: RealCoords/build/libs/*.jar
           if-no-files-found: error
           retention-days: 14
-
-# Source migration runs once when the legacy archive exists; later builds use RealCoords/ directly.
