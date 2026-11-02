@@ -735,13 +735,16 @@ final class ShiftSession {
         }
     }
 
-    private long lastDebugMs;
+    // Throttle each diagnostic category independently so movement traffic
+    // cannot suppress block-placement and teleport diagnostics.
+    private final Map<String, Long> debugRateTimes = new HashMap<>();
 
     private void debugRate(String key, String msg, long everyMs) {
         if (!cfg.debug) return;
         long now = System.currentTimeMillis();
-        if (now - lastDebugMs >= everyMs) {
-            lastDebugMs = now;
+        Long last = debugRateTimes.get(key);
+        if (last == null || now - last >= everyMs) {
+            debugRateTimes.put(key, now);
             log.info(msg);
         }
     }
