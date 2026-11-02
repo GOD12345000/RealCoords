@@ -57,22 +57,33 @@ Patch 目前只存在 RealCoords repository，尚未套用到 Geyser fork，也�
 
 ## 建置與測試
 
-需要 JDK 21 與 Gradle。於 `RealCoords/` 專案目錄執行：
+目前 RealCoords 使用 Geyser 新增的 `DownstreamSessionInitializeEvent`，因此必須先建置套用 Patch 的 Geyser API。
+
+1. Checkout 指定 Geyser commit `a9737092e526996c6e6f51707ff4cf44a8b4b3d2`。
+2. 將本專案的 `patches/geyser/a973709-downstream-session-initialize.patch` 套用到 Geyser 原始碼根目錄。
+3. 在 Geyser 原始碼根目錄執行：
 
 ```bash
-gradle --no-daemon clean build
+./gradlew --no-daemon :api:jar :core:compileJava
 ```
 
-目前 GitHub Actions 已在 Java 21 環境成功執行 `gradle --no-daemon clean build`，包含目前的 JUnit 測試。這只證明 RealCoords 現有程式可建置；downstream hook、Geyser Patch 與座標封包轉換仍需分開完成編譯及整合測試。\n\n- [RealCoords Build workflow](https://github.com/GOD12345000/RealCoords/actions/workflows/build.yml)\n- [Geyser Patch validation workflow](https://github.com/GOD12345000/RealCoords/actions/workflows/validate-geyser-hook.yml)
+4. 回到 RealCoords 專案根目錄，指定剛才產生的 patched API JAR（請依實際版本調整路徑）：
 
-在啟用任何座標轉換前，至少需要：
+```bash
+gradle --no-daemon -p RealCoords \
+  -PgeyserPatchedApiJar=/path/to/geyser/api/build/libs/api-2.12.1-SNAPSHOT.jar \
+  clean build
+```
 
-- Geyser API／核心 patch 能針對目標 commit 編譯。
-- TCP 與 LocalSession 都能在第一個握手封包前安裝 handler。
-- inbound 與 outbound packet 的攔截順序經測試確認。
-- 連線轉移、重新連線與斷線清理正常。
-- 逐類驗證所有絕對座標資料與 Geyser 內部狀態。
-- 在獨立測試世界完成多人、遠距離、維度切換與互動測試。
+需要 JDK 21。RealCoords 的一般建置工作流程使用 Gradle 8.10.2。
+
+GitHub Actions 已驗證：
+- RealCoords 在 Java 21 環境執行 `clean build` 與 JUnit 測試成功。
+- Geyser Patch 可套用到指定 commit，且 patched `:core:compileJava` 成功。
+- 新增 downstream bridge 後，CI 會再以 patched API JAR 編譯並測試 RealCoords。
+
+注意：目前的 bridge 只被設計為被動觀察封包，**不會轉換任何座標**。建置成功不代表 TCP／LocalSession 的實際連線封包順序已完成 runtime integration test，更不代表座標重定位功能已完成。
+
 
 ## 分支安全約定
 
