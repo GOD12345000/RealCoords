@@ -529,10 +529,11 @@ final class ShiftSession {
         if (cfg.cacheEnabled) {
             List<ChunkEntry> list = new ArrayList<>();
             double lim = (pubRadius > 0 ? pubRadius : 256) + 32.0;
+            double localX = lx - offX, localZ = lz - offZ;
             for (ChunkEntry e : chunks.values()) {
-                if (Math.hypot(e.cx * 16 + 8 - lx, e.cz * 16 + 8 - lz) <= lim) list.add(e);
+                if (Math.hypot(e.cx * 16 + 8 - localX, e.cz * 16 + 8 - localZ) <= lim) list.add(e);
             }
-            list.sort(Comparator.comparingDouble(e -> Math.hypot(e.cx * 16 + 8 - lx, e.cz * 16 + 8 - lz)));
+            list.sort(Comparator.comparingDouble(e -> Math.hypot(e.cx * 16 + 8 - localX, e.cz * 16 + 8 - localZ)));
             resendBatch(list, 0, gen);
         }
     }
@@ -585,12 +586,13 @@ final class ShiftSession {
         pk.setSubChunkLimit(e.subLimit);
         pk.setCachingEnabled(false);
         pk.setRequestSubChunks(false);
-        pk.setData(Unpooled.wrappedBuffer(ChunkRewriter.rewrite(raw, offX, offZ, cfg, log)));
+        // Cached Bedrock chunk data was already produced from local-space Java packets.
+        pk.setData(Unpooled.wrappedBuffer(raw));
         send(pk);
         // 補回區塊送出之後發生的方塊／方塊實體變更
         for (BlockUpd u : e.blocks.values()) {
             UpdateBlockPacket up = new UpdateBlockPacket();
-            up.setBlockPosition(toB(u.pos()));
+            up.setBlockPosition(u.pos());
             up.setDefinition(u.def());
             up.setDataLayer(u.layer());
             up.getFlags().addAll(UPD_FLAGS);
@@ -598,8 +600,8 @@ final class ShiftSession {
         }
         for (Map.Entry<Vector3i, NbtMap> t : e.tiles.entrySet()) {
             BlockEntityDataPacket bp = new BlockEntityDataPacket();
-            bp.setBlockPosition(toB(t.getKey()));
-            bp.setData(NbtShift.shift(t.getValue(), offX, offZ, cfg));
+            bp.setBlockPosition(t.getKey());
+            bp.setData(t.getValue());
             send(bp);
         }
     }
