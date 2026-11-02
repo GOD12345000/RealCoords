@@ -104,7 +104,7 @@ jobs:
             if "EntityDataTypes.PLAYER_BED_POSITION" in source_text or "EntityDataTypes.BLOCK_TARGET)" in source_text:
                 raise SystemExit("Outdated EntityDataTypes reference remains")
             source.write_text(source_text, encoding="utf-8")
-        PY
+          PY
 
             rm RealCoords-source.zip
             printf 'build/\\n.gradle/\\n' > RealCoords/.gitignore
