@@ -56,7 +56,7 @@ RealCoords uses its own rotating file logger under the extension data directory:
 
 ## Scope
 
-This is an observation-only bridge. It does not rewrite packets, shift positions, alter chunks, or change any Geyser state. It exists to validate interception placement before coordinate transformation work begins.
+This Netty bridge remains observation-only. It does not call the pure helpers in `PlayerMovementPacketTransform`, rewrite packets, shift positions, alter chunks, or change any Geyser state. The separate pure transformation class now covers a growing set of player, entity, vehicle, chunk, block-event, and block-interaction packet coordinates, with unit tests. It is intentionally not connected to this bridge until origin lifecycle and full world-state consistency are established.
 
 ## Remaining runtime validation
 
