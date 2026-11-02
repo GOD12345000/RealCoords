@@ -42,7 +42,10 @@ final class SessionHook extends ChannelDuplexHandler {
             pl.addLast("realcoords-shift", hook);
         }
         session.start();
-        ch.closeFuture().addListener(f -> session.close());
+        ch.closeFuture().addListener(f -> {
+            session.close();
+            synchronized (SESSIONS) { SESSIONS.remove(gs); }
+        });
         if (cfg.debug) log.info("[RealCoords] pipeline: " + pl.names());
     }
 
