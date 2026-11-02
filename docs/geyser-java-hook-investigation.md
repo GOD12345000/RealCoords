@@ -83,12 +83,15 @@ Therefore LocalSession uses the same MCProtocolLib `NetworkSession` handler and 
 
 ## Exact deterministic ordering
 
-At the Geyser `a973709` call site, the relevant order is:
+At the Geyser `a973709` call site, the existing order is:
 
 1. Create `ClientNetworkSession` or `LocalSession`.
-2. Add MCProtocolLib `ClientListener`.
-3. Add Geyser `GeyserSessionAdapter`.
-4. Call `downstream.connect(false)`.
+2. Configure downstream flags and disable MCProtocolLib's default listener registration.
+3. Add MCProtocolLib `ClientListener`.
+4. Add Geyser `GeyserSessionAdapter`.
+5. Call `downstream.connect(false)`.
+
+The proposed RealCoords initialization event is inserted between steps 2 and 3, allowing its listener to be registered first.
 
 MCProtocolLib `26.3` confirms that `NetworkSession.channelActive()` stores the channel and synchronously calls `ConnectedEvent` on the registered listeners. Importantly, `ClientListener.connected()` sends the handshake and login-start packets immediately from its callback; these sends occur before `channelActive()` reaches its later pending-queue flush. The `MinecraftChannelInitializer` installs the packet codec and then the `NetworkSession` manager handler.
 
