@@ -2,7 +2,7 @@ package dev.realcoords;
 
 import org.cloudburstmc.math.vector.Vector3d;
 import org.cloudburstmc.math.vector.Vector3i;
-import org.geysermc.mcprotocollib.network.packet.Packet;
+import org.geysermc.mcprotocollib.protocol.codec.MinecraftPacket;
 import org.geysermc.mcprotocollib.protocol.data.game.entity.player.PositionElement;
 import org.geysermc.mcprotocollib.protocol.data.game.entity.player.PlayerAction;
 import org.geysermc.mcprotocollib.protocol.data.game.entity.player.Hand;
@@ -38,7 +38,7 @@ class PlayerMovementPacketTransformTest {
                 Vector3d.from(0.1, 0.2, 0.3), 90, 15, List.of()
         );
 
-        Packet output = PlayerMovementPacketTransform.toLocal(input, ORIGIN);
+        MinecraftPacket output = PlayerMovementPacketTransform.toLocal(input, ORIGIN);
 
         assertInstanceOf(ClientboundPlayerPositionPacket.class, output);
         ClientboundPlayerPositionPacket result = (ClientboundPlayerPositionPacket) output;
