@@ -10,6 +10,7 @@ import org.geysermc.mcprotocollib.protocol.data.game.entity.object.Direction;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.player.ClientboundPlayerPositionPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundAddEntityPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundTeleportEntityPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundEntityPositionSyncPacket;
 import org.geysermc.mcprotocollib.protocol.data.game.entity.type.EntityType;
 import org.geysermc.mcprotocollib.protocol.data.game.level.block.BlockChangeEntry;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundBlockUpdatePacket;
@@ -64,6 +65,23 @@ class PlayerMovementPacketTransformTest {
         assertEquals(4, result.getPosition().getY());
         assertEquals(-3.0, result.getPosition().getZ());
         assertEquals(input.getRelatives(), result.getRelatives());
+    }
+
+    @Test
+    void convertsEntityPositionSyncAbsoluteCoordinatesToLocalSpace() {
+        ClientboundEntityPositionSyncPacket input = new ClientboundEntityPositionSyncPacket(
+                30, false, Vector3d.from(25_000_005.5, 72, -17_000_006.25),
+                null, 90, 15, true
+        );
+
+        ClientboundEntityPositionSyncPacket result = (ClientboundEntityPositionSyncPacket)
+                PlayerMovementPacketTransform.toLocal(input, ORIGIN);
+
+        assertEquals(Vector3d.from(5.5, 72, -6.25), result.getEndPosition());
+        assertEquals(input.getId(), result.getId());
+        assertEquals(input.getYRot(), result.getYRot());
+        assertEquals(input.getXRot(), result.getXRot());
+        assertTrue(result.isOnGround());
     }
 
     @Test
