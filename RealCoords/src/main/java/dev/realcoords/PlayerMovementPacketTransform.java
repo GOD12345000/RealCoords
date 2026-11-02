@@ -8,6 +8,11 @@ import org.geysermc.mcprotocollib.protocol.data.game.entity.player.PositionEleme
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.player.ClientboundPlayerPositionPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundAddEntityPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundTeleportEntityPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundEntityPositionSyncPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundMoveVehiclePacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundDamageEventPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.ClientboundGameTestHighlightPosPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.debug.ClientboundDebugBlockValuePacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundLevelChunkWithLightPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundForgetLevelChunkPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundLightUpdatePacket;
@@ -17,6 +22,9 @@ import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.Clien
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundBlockEventPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundLevelEventPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundExplodePacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundOpenSignEditorPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundAddTransientBlockPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundBlockDestructionPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundMovePlayerPosPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundMovePlayerPosRotPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.level.ServerboundAcceptTeleportationPacket;
@@ -50,6 +58,39 @@ public final class PlayerMovementPacketTransform {
      * Relative X/Z components are deltas and must remain unchanged.
      */
     public static Packet toLocal(Packet packet, CoordinateTransform origin) {
+        if (packet instanceof ClientboundEntityPositionSyncPacket syncPacket) {
+            if (syncPacket.isStepped()) {
+                java.util.List<ClientboundEntityPositionSyncPacket.PositionStep> localSteps = syncPacket.getSteps().stream()
+                        .map(step -> new ClientboundEntityPositionSyncPacket.PositionStep(
+                                toLocalPosition(step.position(), origin), step.tickOffset()))
+                        .toList();
+                return syncPacket.withSteps(localSteps);
+            }
+            return syncPacket.withEndPosition(toLocalPosition(syncPacket.getEndPosition(), origin));
+        }
+        if (packet instanceof ClientboundMoveVehiclePacket vehiclePacket) {
+            return vehiclePacket.withPosition(toLocalPosition(vehiclePacket.getPosition(), origin));
+        }
+        if (packet instanceof ClientboundDamageEventPacket damagePacket && damagePacket.getSourcePosition() != null) {
+            return new ClientboundDamageEventPacket(
+                    damagePacket.getEntityId(), damagePacket.getSourceTypeId(), damagePacket.getSourceCauseId(),
+                    damagePacket.getSourceDirectId(), toLocalPosition(damagePacket.getSourcePosition(), origin));
+        }
+        if (packet instanceof ClientboundOpenSignEditorPacket signEditorPacket) {
+            return signEditorPacket.withPosition(toLocalBlockPosition(signEditorPacket.getPosition(), origin));
+        }
+        if (packet instanceof ClientboundAddTransientBlockPacket transientBlockPacket) {
+            return transientBlockPacket.withPosition(toLocalBlockPosition(transientBlockPacket.getPosition(), origin));
+        }
+        if (packet instanceof ClientboundBlockDestructionPacket destructionPacket) {
+            return destructionPacket.withPosition(toLocalBlockPosition(destructionPacket.getPosition(), origin));
+        }
+        if (packet instanceof ClientboundGameTestHighlightPosPacket gameTestPacket) {
+            return gameTestPacket.withAbsolutePos(toLocalBlockPosition(gameTestPacket.getAbsolutePos(), origin));
+        }
+        if (packet instanceof ClientboundDebugBlockValuePacket debugBlockPacket) {
+            return debugBlockPacket.withBlockPos(toLocalBlockPosition(debugBlockPacket.getBlockPos(), origin));
+        }
         if (packet instanceof ClientboundLevelChunkWithLightPacket chunkPacket) {
             return chunkPacket
                     .withX(origin.toLocalChunkX(chunkPacket.getX()))
@@ -189,6 +230,12 @@ public final class PlayerMovementPacketTransform {
                     .withZ(origin.toRealZ(positionRotationPacket.getZ()));
         }
         return packet;
+    }
+
+    private static Vector3d toLocalPosition(Vector3d realPosition, CoordinateTransform origin) {
+        return Vector3d.from(
+                origin.toLocalX(realPosition.getX()), realPosition.getY(), origin.toLocalZ(realPosition.getZ())
+        );
     }
 
     private static Vector3i toLocalBlockPosition(Vector3i realPosition, CoordinateTransform origin) {
