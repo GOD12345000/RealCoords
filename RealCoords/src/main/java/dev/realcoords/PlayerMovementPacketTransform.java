@@ -18,7 +18,7 @@ import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.inventory.S
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.inventory.ServerboundSetJigsawBlockPacket;
 
 /**
- * Pure player-position packet transformations for one immutable origin.
+ * Pure entity, player, vehicle, and block-interaction packet transformations for one immutable origin.
  *
  * <p>Inbound packets travel from the Java server to Geyser. Outbound packets
  * travel from Geyser to the Java server. This class is deliberately not wired
