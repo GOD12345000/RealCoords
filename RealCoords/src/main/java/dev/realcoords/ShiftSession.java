@@ -15,7 +15,6 @@ import org.cloudburstmc.protocol.bedrock.data.entity.EntityDataMap;
 import org.cloudburstmc.protocol.bedrock.data.entity.EntityDataTypes;
 import org.cloudburstmc.protocol.bedrock.netty.BedrockPacketWrapper;
 import org.cloudburstmc.protocol.bedrock.packet.*;
-import org.geysermc.geyser.api.extension.ExtensionLogger;
 import org.geysermc.geyser.session.GeyserSession;
 
 import java.io.ByteArrayOutputStream;
@@ -62,7 +61,7 @@ final class ShiftSession {
     private final GeyserSession gs;
     private final Channel ch;
     private final ShiftConfig cfg;
-    private final ExtensionLogger log;
+    private final RealCoordsLog log;
 
     // 目前套用的偏移（方塊單位，必為 16 的倍數）
     private volatile int offX, offZ;
@@ -94,7 +93,7 @@ final class ShiftSession {
     private final Set<String> warned = new HashSet<>();
     private ScheduledFuture<?> barTask;
 
-    ShiftSession(GeyserSession gs, Channel ch, ShiftConfig cfg, ExtensionLogger log) {
+    ShiftSession(GeyserSession gs, Channel ch, ShiftConfig cfg, RealCoordsLog log) {
         this.gs = gs;
         this.ch = ch;
         this.cfg = cfg;
@@ -740,13 +739,13 @@ final class ShiftSession {
         Long last = debugRateTimes.get(key);
         if (last == null || now - last >= everyMs) {
             debugRateTimes.put(key, now);
-            log.info(msg);
+            log.debug(msg);
         }
     }
 
     void javaHookReady(String pipeline) {
         log.info("[RealCoords] Java downstream hook active: " + name());
-        if (cfg.debug) log.info("[RealCoords] Java pipeline: " + pipeline);
+        if (cfg.debug) log.debug("[RealCoords] Java pipeline: " + pipeline);
     }
 
     void javaHookClosed() {
