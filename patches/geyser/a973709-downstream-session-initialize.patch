@@ -81,18 +81,19 @@ diff --git a/core/src/main/java/org/geysermc/geyser/session/GeyserSession.java b
 +import org.geysermc.geyser.api.event.downstream.DownstreamSessionInitializeEvent;
  import org.geysermc.geyser.api.network.RemoteServer;
  import org.geysermc.geyser.api.skin.SkinData;
-@@ -1246,6 +1247,12 @@
-         // MCPL listener comes first to handle protocol state switching before Geyser translates packets
-         downstream.addListener(new ClientListener(HandshakeIntent.LOGIN, Boolean.getBoolean("Geyser.ValidateDecompression")));
-+
-+        // Extensions may need an ordered listener before Geyser starts the downstream connection.
-+        // Keep this event between ClientListener and GeyserSessionAdapter.
+@@ -1243,6 +1243,13 @@
+         // We manually add the default listener to ensure the order of listeners.
+         protocol.setUseDefaultListeners(false);
+ 
++        // Extensions must install listeners before ClientListener sends the initial handshake.
 +        GeyserImpl.getInstance().eventBus().fireEventElseKick(
 +            new DownstreamSessionInitializeEvent(this, downstream), this);
 +        if (closed) {
 +            return;
 +        }
 +
+         // MCPL listener comes first to handle protocol state switching before Geyser translates packets
+         downstream.addListener(new ClientListener(HandshakeIntent.LOGIN, Boolean.getBoolean("Geyser.ValidateDecompression")));
          // Geyser adapter second to ensure translating packets in the correct states
          downstream.addListener(new GeyserSessionAdapter(this));
  
