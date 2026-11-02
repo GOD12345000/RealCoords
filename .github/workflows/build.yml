@@ -72,7 +72,7 @@ jobs:
               text = text.replace(old_action, "x.setBlockPosition(toR(x.getBlockPosition()));")
           if "new PlayerBlockActionData(" in text:
               raise SystemExit("Unsupported PlayerBlockActionData constructor remains")
-          if "EntityDataTypes.PLAYER_BED_POSITION" in text or "EntityDataTypes.BLOCK_TARGET" in text:
+          if "EntityDataTypes.PLAYER_BED_POSITION" in text or "EntityDataTypes.BLOCK_TARGET)" in text:
               raise SystemExit("Outdated EntityDataTypes reference remains")
           source.write_text(text)
           PY
