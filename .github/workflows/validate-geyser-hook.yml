@@ -23,7 +23,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: GeyserMC/Geyser
-          ref: a973709
+          ref: a9737092e526996c6e6f51707ff4cf44a8b4b3d2
           path: geyser
 
       - name: Set up Java 21
