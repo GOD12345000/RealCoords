@@ -53,7 +53,7 @@ final class BedrockPacketCoordinateTransformer {
         if (packet instanceof ClientboundMapItemDataPacket map) {
             Vector3i origin = map.getOrigin();
             if (origin != null) {
-                map.setOrigin(transform.toBedrock(origin));
+                map.setOrigin(toBedrock(origin, transform));
             }
 
             List<MapTrackedObject> objects = map.getTrackedObjects();
