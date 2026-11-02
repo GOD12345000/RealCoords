@@ -12,9 +12,9 @@ Status: proposal only. This document does not modify Geyser or enable packet tra
 
 Geyser's public `SessionLoginEvent` is fired before the Java downstream session is created. The public `SessionJoinEvent` is too late to guarantee interception before initial Java world packets. Polling the Geyser tick EventLoop is not deterministic relative to MCProtocolLib's independent Netty EventLoop.
 
-At the exact target revision, Geyser creates a `ClientNetworkSession` (or `LocalSession`), registers MCProtocolLib's `ClientListener`, registers `GeyserSessionAdapter`, then calls `connect(false)`.
+At the exact target revision, Geyser creates a `ClientNetworkSession` (or `LocalSession`), registers MCProtocolLib's `ClientListener`, registers `GeyserSessionAdapter`, then calls `connect(false)`. Source inspection of `ClientListener.connected()` shows that it immediately sends the handshake and login-start packets when `ConnectedEvent` fires.
 
-MCProtocolLib's `NetworkSession.channelActive()` fires `ConnectedEvent` synchronously before flushing queued outbound packets. Thus an adapter registered before `connect(false)` can install a Netty duplex handler during `ConnectedEvent`, before the initial handshake queue is flushed.
+MCProtocolLib's `NetworkSession.channelActive()` fires `ConnectedEvent` synchronously before flushing queued outbound packets. However, listener ordering matters: `ClientListener.connected()` sends the handshake immediately from its own `ConnectedEvent` callback. Therefore a RealCoords adapter registered after `ClientListener` is too late for the first outbound packets. RealCoords must be registered before `ClientListener`, so its `connected()` callback installs the Netty duplex handler before the protocol listener sends the handshake.
 
 ## Proposed API
 
@@ -93,13 +93,13 @@ GeyserImpl.getInstance().eventBus().fire(
 downstream.addListener(new GeyserSessionAdapter(this));
 ```
 
-The event must not be moved above the `ClientListener` registration or below `GeyserSessionAdapter` / `connect(false)`. The order is part of the hook contract and must be covered by a regression test or explicit lifecycle test.
+The event must be fired before `ClientListener` registration. This ordering is essential: `ClientListener.connected()` sends the initial handshake synchronously during `ConnectedEvent`. If RealCoords were registered after it, the first outbound handshake packet would bypass the Netty handler. The event must also remain before `GeyserSessionAdapter` and `connect(false)`. The order is part of the hook contract and must be covered by a regression test or explicit lifecycle test.
 
 ## RealCoords listener behavior
 
 RealCoords subscribes to `DownstreamSessionInitializeEvent` and registers a MCProtocolLib `SessionAdapter` on `event.downstreamSession()`.
 
-In `connected(ConnectedEvent)`, the adapter:
+In `connected(ConnectedEvent)`, the adapter runs before `ClientListener.connected()` and:
 
 1. Obtains the active channel from the MCProtocolLib session.
 2. Verifies the expected `NetworkSession` handler exists in the pipeline.
@@ -116,8 +116,8 @@ Because `LocalSession` extends `ClientNetworkSession` and its custom initializer
 
 - Event fires exactly once for each downstream connection attempt.
 - Event observes a non-null downstream session.
-- Listener order at event time is `ClientListener`, extension listener, then `GeyserSessionAdapter`.
-- Event fires before `connect(false)`.
+- Listener order after the event is extension listener, `ClientListener`, then `GeyserSessionAdapter`.
+- Event fires before `ClientListener` registration and before `connect(false)`.
 - TCP and LocalSession both reach `ConnectedEvent` with the expected manager handler installed.
 - Event is not fired if `SessionLoginEvent` cancels the connection.
 - Reconnect / server-transfer paths fire a fresh event for the new downstream session.
