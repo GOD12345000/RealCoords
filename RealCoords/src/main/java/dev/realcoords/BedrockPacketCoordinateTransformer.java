@@ -4,7 +4,6 @@ import org.cloudburstmc.math.vector.Vector3i;
 import org.cloudburstmc.nbt.NbtMap;
 import org.cloudburstmc.nbt.NbtType;
 import org.cloudburstmc.protocol.bedrock.data.BlockChangeEntry;
-import org.cloudburstmc.protocol.bedrock.data.LevelEvent;
 import org.cloudburstmc.protocol.bedrock.data.MapTrackedObject;
 import org.cloudburstmc.protocol.bedrock.packet.BedrockPacket;
 import org.cloudburstmc.protocol.bedrock.packet.ClientboundMapItemDataPacket;
@@ -121,12 +120,14 @@ final class BedrockPacketCoordinateTransformer {
         NbtMap shifted = tag;
 
         if ("PARTICLE_BLOCK_EXPLOSION".equals(type)) {
-            if (tag.containsKey("originX", NbtType.FLOAT)) {
-                shifted = shifted.toBuilder()
-                        .putFloat("originX", transform.toBedrockX(tag.getFloat("originX")))
-                        .putFloat("originZ", transform.toBedrockZ(tag.getFloat("originZ")))
-                        .build();
-            }
+            shifted = shiftFloatPair(tag, "originX", "originZ", transform);
+        } else if ("SCULK_CHARGE".equals(type) || "SCULK_CHARGE_POP".equals(type)) {
+            shifted = shiftIntPair(tag, "x", "z", transform);
+        } else if ("PARTICLE_SCULK_SHRIEK".equals(type)) {
+            shifted = shiftIntPair(tag, "originX", "originZ", transform);
+        } else if ("SLEEPING_PLAYERS".equals(type)) {
+            // This event contains counts, not world coordinates.
+            return true;
         } else if ("PARTICLE_VIBRATION_SIGNAL".equals(type)) {
             NbtMap origin = tag.getCompound("origin", null);
             NbtMap target = tag.getCompound("target", null);
@@ -160,6 +161,26 @@ final class BedrockPacketCoordinateTransformer {
 
         event.setTag(shifted);
         return true;
+    }
+
+    private static NbtMap shiftFloatPair(NbtMap tag, String xKey, String zKey, CoordinateTransform transform) {
+        if (!tag.containsKey(xKey, NbtType.FLOAT) || !tag.containsKey(zKey, NbtType.FLOAT)) {
+            return tag;
+        }
+        return tag.toBuilder()
+                .putFloat(xKey, transform.toBedrockX(tag.getFloat(xKey)))
+                .putFloat(zKey, transform.toBedrockZ(tag.getFloat(zKey)))
+                .build();
+    }
+
+    private static NbtMap shiftIntPair(NbtMap tag, String xKey, String zKey, CoordinateTransform transform) {
+        if (!tag.containsKey(xKey, NbtType.INT) || !tag.containsKey(zKey, NbtType.INT)) {
+            return tag;
+        }
+        return tag.toBuilder()
+                .putInt(xKey, transform.toBedrockX(tag.getInt(xKey)))
+                .putInt(zKey, transform.toBedrockZ(tag.getInt(zKey)))
+                .build();
     }
 
     private static NbtMap shiftVec3(NbtMap vector, CoordinateTransform transform) {
