@@ -1,0 +1,43 @@
+name: Validate Geyser downstream hook patch
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/coordinate-origin-rebasing
+    paths:
+      - "patches/geyser/**"
+      - ".github/workflows/validate-geyser-hook.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate-patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout RealCoords
+        uses: actions/checkout@v4
+
+      - name: Checkout pinned Geyser source
+        uses: actions/checkout@v4
+        with:
+          repository: GeyserMC/Geyser
+          ref: a973709
+          path: geyser
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Verify patch applies cleanly
+        working-directory: geyser
+        run: |
+          git apply --check ../patches/geyser/a973709-downstream-session-initialize.patch
+          git apply ../patches/geyser/a973709-downstream-session-initialize.patch
+
+      - name: Compile patched Geyser core
+        working-directory: geyser
+        run: ./gradlew --no-daemon :core:compileJava
