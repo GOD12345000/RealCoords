@@ -15,25 +15,27 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Extract source archive
+        run: |
+          test -f RealCoords-source.zip
+          unzip -q RealCoords-source.zip -d .
+          test -f RealCoords/build.gradle.kts
 
       - name: Set up Java 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "21"
           cache: gradle
+          cache-dependency-path: RealCoords/**/*.gradle*
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.10.2"
-
-      - name: Extract source
-        run: |
-          test -f RealCoords-source.zip
-          unzip -q RealCoords-source.zip -d .
-          test -f RealCoords/build.gradle.kts
 
       - name: Build
         working-directory: RealCoords
