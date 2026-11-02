@@ -1,12 +1,10 @@
 # Passive Java Downstream Packet Bridge
 
-Status: implemented and compile-validated against the pinned patched Geyser API. Runtime TCP / LocalSession integration checks are still pending. No coordinate fields are modified.
+Status: bridge implementation compiles against the official, unmodified Geyser API. The current listener-order entry point is the standalone startup agent described in [startup-agent.md](startup-agent.md), not the historical Geyser patch. Runtime TCP / LocalSession integration checks are still pending. No coordinate fields are modified.
 
 ## Initialization order
 
-Geyser fires `DownstreamSessionInitializeEvent` after constructing/configuring the MCProtocolLib client session and before registering `ClientListener` or `GeyserSessionAdapter`.
-
-RealCoords registers a `SessionAdapter` during that callback. It is therefore the first MCProtocolLib listener. When `ConnectedEvent` fires, the RealCoords listener runs before `ClientListener.connected()` sends the initial handshake and login-start packets.
+The startup agent instruments `GeyserSession.connectDownstream()` and calls the RealCoords bridge immediately before Geyser's first downstream `addListener()` call. The extension registers a `SessionAdapter` synchronously during that callback. It is therefore the first MCProtocolLib listener. When `ConnectedEvent` fires, the RealCoords listener runs before `ClientListener.connected()` sends the initial handshake and login-start packets.
 
 ## Verified MCProtocolLib pipeline order
 
