@@ -13,8 +13,6 @@ import org.cloudburstmc.protocol.bedrock.data.PlayerBlockActionData;
 import org.cloudburstmc.protocol.bedrock.data.definitions.BlockDefinition;
 import org.cloudburstmc.protocol.bedrock.data.entity.EntityDataMap;
 import org.cloudburstmc.protocol.bedrock.data.entity.EntityDataTypes;
-import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.InventoryTransactionType;
-import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.ItemUseTransaction;
 import org.cloudburstmc.protocol.bedrock.netty.BedrockPacketWrapper;
 import org.cloudburstmc.protocol.bedrock.packet.*;
 import org.geysermc.geyser.api.extension.ExtensionLogger;
@@ -67,7 +65,7 @@ final class ShiftSession {
     private final ExtensionLogger log;
 
     // 目前套用的偏移（方塊單位，必為 16 的倍數）
-    private int offX, offZ;
+    private volatile int offX, offZ;
     private int dim;
     private long localId = Long.MIN_VALUE;
 
@@ -189,10 +187,14 @@ final class ShiftSession {
         } else if (p instanceof BlockEventPacket be) {
             be.setBlockPosition(toB(be.getBlockPosition()));
         } else if (p instanceof MovePlayerPacket m) {
-            Vector3f real = m.getPosition();
-            if (m.getRuntimeEntityId() == localId) onLocalPosition(real, m.getRotation());
-            else trackEntity(m.getRuntimeEntityId(), real, m.getRotation(), m.isOnGround());
-            m.setPosition(toB(real));
+            Vector3f position = m.getPosition();
+            if (m.getRuntimeEntityId() == localId) {
+                // Java→Geyser 已先扣除原點；保留小座標，不能再轉一次。
+                onLocalPosition(position, m.getRotation());
+            } else {
+                trackEntity(m.getRuntimeEntityId(), position, m.getRotation(), m.isOnGround());
+                m.setPosition(toB(position));
+            }
         } else if (p instanceof MoveEntityAbsolutePacket m) {
             trackEntity(m.getRuntimeEntityId(), m.getPosition(), m.getRotation(), m.isOnGround());
             m.setPosition(toB(m.getPosition()));
@@ -319,12 +321,25 @@ final class ShiftSession {
     // 伺服器傳送玩家 → 更新真實位置、必要時換原點
     // =====================================================================
 
-    private void onLocalPosition(Vector3f real, Vector3f rot) {
-        lx = real.getX();
-        ly = real.getY() - cfg.eyeHeight;
-        lz = real.getZ();
+    private void onLocalPosition(Vector3f local, Vector3f rot) {
+        // Geyser 收到的玩家位置已被 Java inbound hook 還原成 local-space。
+        lx = local.getX() + offX;
+        ly = local.getY() - cfg.eyeHeight;
+        lz = local.getZ() + offZ;
         if (rot != null) { pitch = rot.getX(); yaw = rot.getY(); headYaw = rot.getZ(); }
         havePos = true;
+        if (offX == 0 && offZ == 0) {
+            ShiftConfig.Dim d = dimCfg();
+            int nx = nextOff(offX, lx, d), nz = nextOff(offZ, lz, d);
+            if (nx != offX || nz != offZ) {
+                // 初次進入遠距離世界：下游位置封包已先轉成 local-space，直接建立原點。
+                offX = nx;
+                offZ = nz;
+                lastShiftMs = System.currentTimeMillis();
+                log.info(String.format("[RealCoords] %s: initial origin -> (%d,%d), real=(%.3f, %.3f)",
+                        name(), offX, offZ, lx, lz));
+            }
+        }
         hold = true;
         holdDeadline = System.currentTimeMillis() + cfg.ackTimeoutMs;
         ShiftConfig.Dim d = dimCfg();
@@ -342,44 +357,25 @@ final class ShiftSession {
 
         if (p instanceof PlayerAuthInputPacket a) {
             onAuthInput(a);
-        } else if (p instanceof MovePlayerPacket m) {
-            m.setPosition(toR(m.getPosition()));
+        } else if (p instanceof MovePlayerPacket) {
+            // 玩家座標維持 Bedrock local-space；Java movement 封包在下游管線才加回原點。
         } else if (p instanceof MoveEntityAbsolutePacket m) {
             m.setPosition(toR(m.getPosition()));
-        } else if (p instanceof InventoryTransactionPacket t) {
-            invTx(t);
-        } else if (p instanceof PlayerActionPacket a) {
-            a.setBlockPosition(toR(a.getBlockPosition()));
-            a.setResultPosition(toR(a.getResultPosition()));
-        } else if (p instanceof BlockPickRequestPacket b) {
-            b.setBlockPosition(toR(b.getBlockPosition()));
-        } else if (p instanceof LecternUpdatePacket l) {
-            l.setBlockPosition(toR(l.getBlockPosition()));
-        } else if (p instanceof CommandBlockUpdatePacket c) {
-            c.setBlockPosition(toR(c.getBlockPosition()));
-        } else if (p instanceof ItemFrameDropItemPacket i) {
-            i.setBlockPosition(toR(i.getBlockPosition()));
+        } else if (p instanceof InventoryTransactionPacket) {
+            // Geyser 必須先用 local-space 做距離與方塊互動驗證。
+        } else if (p instanceof PlayerActionPacket) {
+            // 方塊動作座標留在 local-space，由 Java 下游封包 hook 加回原點。
+        } else if (p instanceof BlockPickRequestPacket) {
+            // 保留 local-space。
+        } else if (p instanceof LecternUpdatePacket) {
+            // 保留 local-space。
+        } else if (p instanceof CommandBlockUpdatePacket) {
+            // 保留 local-space。
+        } else if (p instanceof ItemFrameDropItemPacket) {
+            // 保留 local-space。
         } else if (p instanceof BlockEntityDataPacket be) {
-            be.setBlockPosition(toR(be.getBlockPosition()));
+            // NBT 內容可能包含世界座標，但封包位置本身供 Geyser 驗證時必須保持 local-space。
             be.setData(NbtShift.shift(be.getData(), -offX, -offZ, cfg));
-        }
-    }
-
-    private void invTx(InventoryTransactionPacket t) {
-        if (t == null) return;
-        if (t.getPlayerPosition() != null) t.setPlayerPosition(toR(t.getPlayerPosition()));
-        if (t.getTransactionType() == InventoryTransactionType.ITEM_USE && t.getBlockPosition() != null) {
-            t.setBlockPosition(toR(t.getBlockPosition()));
-        }
-    }
-
-
-    private void invTx(ItemUseTransaction t) {
-        if (t == null) return;
-        if (t.getPlayerPosition() != null) t.setPlayerPosition(toR(t.getPlayerPosition()));
-        // Action type 2 is the block item-interaction transaction.
-        if (t.getActionType() == 2 && t.getBlockPosition() != null) {
-            t.setBlockPosition(toR(t.getBlockPosition()));
         }
     }
 
@@ -392,9 +388,13 @@ final class ShiftSession {
         }
         long now = System.currentTimeMillis();
         double rx = pos.getX() + offX, rz = pos.getZ() + offZ, ry = pos.getY() - cfg.eyeHeight;
+        debugRate("bedrock-input", String.format(
+                "[RealCoords][MOVE IN] %s local=(%.4f, %.4f, %.4f) offset=(%d,%d) real=(%.4f, %.4f, %.4f)",
+                name(), pos.getX(), pos.getY(), pos.getZ(), offX, offZ, rx, pos.getY(), rz), 1000);
 
-        // 交給 Geyser 的位置（真實座標）。預設就是客戶端回報值 + offset。
-        double ox = rx, oy = pos.getY(), oz = rz;
+        // Geyser 的碰撞、互動距離與方塊預測必須使用小範圍 local-space。
+        // 真實座標只在 Java 下游封包層以 double 加回偏移。
+        double localX = pos.getX(), localY = pos.getY(), localZ = pos.getZ();
         boolean accept = true;
 
         if (hold) {
@@ -402,14 +402,14 @@ final class ShiftSession {
             if (Math.hypot(pos.getX() - ex, pos.getZ() - ez) <= cfg.ackTolerance || now > holdDeadline) {
                 hold = false;                         // 已到位（或逾時）
             } else {
-                ox = lx; oy = ly + cfg.eyeHeight; oz = lz;   // 還在舊座標系：對 Geyser 隱藏
+                localX = lx - offX; localY = ly + cfg.eyeHeight; localZ = lz - offZ; // 舊座標系：對 Geyser 隱藏
                 accept = false;
             }
         }
 
         if (accept && havePos && Math.hypot(rx - lx, rz - lz) > cfg.maxJump) {
             // 防呆閘：不合理的瞬間位移，絕不轉交給 Java 伺服器
-            ox = lx; oz = lz;
+            localX = lx - offX; localZ = lz - offZ;
             accept = false;
             warnRate("guard", String.format(
                     "%s 回報了不合理的座標跳躍 (%.1f,%.1f) -> (%.1f,%.1f)，已丟棄並要求客戶端回到 (%.1f,%.1f)",
@@ -422,7 +422,9 @@ final class ShiftSession {
             }
         }
 
-        a.setPosition(Vector3f.from((float) ox, (float) oy, (float) oz));
+        if (!accept) {
+            a.setPosition(Vector3f.from((float) localX, (float) localY, (float) localZ));
+        }
         if (accept) {
             lx = rx; ly = ry; lz = rz;
             havePos = true;
@@ -430,17 +432,8 @@ final class ShiftSession {
             if (rot != null) { pitch = rot.getX(); yaw = rot.getY(); headYaw = rot.getZ(); }
         }
 
-        // 封包其餘部分也轉成真實座標（用目前的 offset）
-        invTx(a.getItemUseTransaction());
-        List<PlayerBlockActionData> acts = a.getPlayerActions();
-        if (acts != null && (offX != 0 || offZ != 0)) {
-            for (ListIterator<PlayerBlockActionData> it = acts.listIterator(); it.hasNext(); ) {
-                PlayerBlockActionData x = it.next();
-                if (x.getBlockPosition() != null) {
-                    x.setBlockPosition(toR(x.getBlockPosition()));
-                }
-            }
-        }
+        // PlayerAuthInput 的方塊動作與 ItemUseTransaction 也維持 local-space；
+        // Geyser 完成碰撞／放置判斷並產生 Java 封包後，再由下游 hook 加回原點。
 
         // 是否需要換原點（放在最後，才不影響上面的轉換）
         if (accept && now - lastShiftMs >= cfg.cooldownMs) {
@@ -736,6 +729,88 @@ final class ShiftSession {
         } catch (Throwable t) {
             return "?";
         }
+    }
+
+    private long lastDebugMs;
+
+    private void debugRate(String key, String msg, long everyMs) {
+        if (!cfg.debug) return;
+        long now = System.currentTimeMillis();
+        if (now - lastDebugMs >= everyMs) {
+            lastDebugMs = now;
+            log.info(msg);
+        }
+    }
+
+    void javaOutbound(Object packet) {
+        // Geyser→Java：Bedrock local coordinates are converted to real Java doubles here.
+        if (packet instanceof org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundMovePlayerPosPacket p) {
+            double x = p.getX() + offX, z = p.getZ() + offZ;
+            debugRate("java-move", String.format(
+                    "[RealCoords][MOVE OUT] %s local=(%.4f, %.4f) -> java=(%.4f, %.4f) offset=(%d,%d)",
+                    name(), p.getX(), p.getZ(), x, z, offX, offZ), 1000);
+            return p.withX(x).withZ(z);
+        }
+        if (packet instanceof org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundMovePlayerPosRotPacket p) {
+            double x = p.getX() + offX, z = p.getZ() + offZ;
+            debugRate("java-move-rot", String.format(
+                    "[RealCoords][MOVE OUT] %s local=(%.4f, %.4f) -> java=(%.4f, %.4f) offset=(%d,%d)",
+                    name(), p.getX(), p.getZ(), x, z, offX, offZ), 1000);
+            return p.withX(x).withZ(z);
+        }
+        if (packet instanceof org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.level.ServerboundMoveVehiclePacket p) {
+            org.cloudburstmc.math.vector.Vector3d v = p.getPosition();
+            return p.withPosition(org.cloudburstmc.math.vector.Vector3d.from(v.getX() + offX, v.getY(), v.getZ() + offZ));
+        }
+        if (packet instanceof org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundUseItemOnPacket p) {
+            Vector3i v = p.getPosition();
+            Vector3i shifted = Vector3i.from(v.getX() + offX, v.getY(), v.getZ() + offZ);
+            debugRate("block-place", String.format(
+                    "[RealCoords][BLOCK USE] %s local=(%d,%d,%d) -> java=(%d,%d,%d) offset=(%d,%d)",
+                    name(), v.getX(), v.getY(), v.getZ(), shifted.getX(), shifted.getY(), shifted.getZ(), offX, offZ), 0);
+            return p.withPosition(shifted);
+        }
+        if (packet instanceof org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundPlayerActionPacket p) {
+            Vector3i v = p.getPosition();
+            Vector3i shifted = Vector3i.from(v.getX() + offX, v.getY(), v.getZ() + offZ);
+            debugRate("block-action", String.format(
+                    "[RealCoords][BLOCK ACTION] %s action=%s local=(%d,%d,%d) -> java=(%d,%d,%d)",
+                    name(), p.getAction(), v.getX(), v.getY(), v.getZ(), shifted.getX(), shifted.getY(), shifted.getZ()), 0);
+            return p.withPosition(shifted);
+        }
+        return packet;
+    }
+
+    Object javaInbound(Object packet) {
+        if (packet instanceof org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.player.ClientboundPlayerPositionPacket p) {
+            org.cloudburstmc.math.vector.Vector3d v = p.getPosition();
+            List<org.geysermc.mcprotocollib.protocol.data.game.entity.player.PositionElement> relative = p.getRelatives();
+            double x = v.getX(), z = v.getZ();
+            boolean relX = relative.contains(org.geysermc.mcprotocollib.protocol.data.game.entity.player.PositionElement.X);
+            boolean relZ = relative.contains(org.geysermc.mcprotocollib.protocol.data.game.entity.player.PositionElement.Z);
+
+            // 初次位置同步時，先在 double 精度下決定原點，避免 Geyser 先轉成 float。
+            if (!havePos && offX == 0 && offZ == 0) {
+                ShiftConfig.Dim d = dimCfg();
+                int nx = relX ? 0 : nextOff(offX, x, d);
+                int nz = relZ ? 0 : nextOff(offZ, z, d);
+                if (nx != 0 || nz != 0) {
+                    offX = nx;
+                    offZ = nz;
+                    log.info(String.format("[RealCoords] %s: initial origin from Java position -> (%d,%d), raw=(%.3f, %.3f)",
+                            name(), offX, offZ, x, z));
+                }
+            }
+            double shiftedX = relX ? x : x - offX;
+            double shiftedZ = relZ ? z : z - offZ;
+            if (shiftedX != x || shiftedZ != z) {
+                debugRate("java-teleport", String.format(
+                        "[RealCoords][TELEPORT IN] %s java=(%.4f, %.4f) -> local=(%.4f, %.4f) relative=(%s,%s) offset=(%d,%d)",
+                        name(), x, z, shiftedX, shiftedZ, relX, relZ, offX, offZ), 0);
+                return p.withPosition(org.cloudburstmc.math.vector.Vector3d.from(shiftedX, v.getY(), shiftedZ));
+            }
+        }
+        return packet;
     }
 
     private void warnOnce(String key, String msg) {
