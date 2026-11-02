@@ -1,61 +1,18 @@
-name: Validate Geyser downstream hook patch
+name: Historical Geyser patch validation (superseded)
 
+# Retained for project history. The current branch uses RealCoordsAgent and the
+# official, unmodified Geyser API; this workflow intentionally does not run on push.
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - feature/coordinate-origin-rebasing
-    paths:
-      - "patches/geyser/**"
-      - "RealCoords/**"
-      - ".github/workflows/validate-geyser-hook.yml"
 
 permissions:
   contents: read
 
-concurrency:
-  group: validate-geyser-hook-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  validate-patch-and-extension:
+  historical-note:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout RealCoords
-        uses: actions/checkout@v4
-
-      - name: Checkout pinned Geyser source
-        uses: actions/checkout@v4
-        with:
-          repository: GeyserMC/Geyser
-          ref: a9737092e526996c6e6f51707ff4cf44a8b4b3d2
-          path: geyser
-
-      - name: Set up Java 21
-        uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: "21"
-
-      - name: Set up Gradle for RealCoords
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: "8.10.2"
-
-      - name: Verify patch applies cleanly
-        working-directory: geyser
+      - name: Explain superseded workflow
         run: |
-          git apply --check ../patches/geyser/a973709-downstream-session-initialize.patch
-          git apply ../patches/geyser/a973709-downstream-session-initialize.patch
-
-      - name: Compile patched Geyser API and core
-        working-directory: geyser
-        run: ./gradlew --no-daemon :api:jar :core:compileJava
-
-      - name: Compile and test RealCoords against patched API
-        run: |
-          API_JAR="$(find geyser/api/build/libs -maxdepth 1 -type f -name 'api-*.jar' ! -name '*sources*' | head -n 1)"
-          test -n "$API_JAR"
-          gradle --no-daemon -p RealCoords \
-            -PgeyserPatchedApiJar="$GITHUB_WORKSPACE/$API_JAR" \
-            clean build
+          echo "This historical patched-Geyser validation workflow is superseded."
+          echo "Use the Build RealCoords workflow for the startup-agent architecture."
