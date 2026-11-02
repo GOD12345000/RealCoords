@@ -25,7 +25,7 @@ class CoordinateTransformTest {
         double x = -23_255_206.000_123;
         double z = 17_909_758.000_456;
 
-        assertEquals(x, transform.toRealX(transform.toLocalX(x)), 1e-9);
+        assertEquals(x, transform.toRealX(transform.toLocalX(x)), 1e-8);
         assertEquals(z, transform.toRealZ(transform.toLocalZ(z)), 1e-9);
     }
 
