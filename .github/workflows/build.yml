@@ -23,14 +23,24 @@ jobs:
           test -f RealCoords-source.zip
           unzip -q RealCoords-source.zip -d .
           test -f RealCoords/build.gradle.kts
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("RealCoords/build.gradle.kts")
+          s = p.read_text()
+          start = s.index("repositories {")
+          end = s.index("\n}\n\ndependencies", start)
+          s = s[:start] + """repositories {
+              mavenCentral()
+              maven("https://repo.opencollab.dev/main/")
+          }""" + s[end + 2:]
+          p.write_text(s)
+          PY
 
       - name: Set up Java 21
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "21"
-          cache: gradle
-          cache-dependency-path: RealCoords/**/*.gradle*
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
