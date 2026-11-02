@@ -6,7 +6,6 @@ import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPipeline;
 import io.netty.channel.ChannelPromise;
-import org.geysermc.geyser.api.extension.ExtensionLogger;
 import org.geysermc.mcprotocollib.network.NetworkConstants;
 import org.geysermc.mcprotocollib.network.Session;
 import org.geysermc.mcprotocollib.network.event.session.ConnectedEvent;
@@ -25,9 +24,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public final class DownstreamSessionHook extends SessionAdapter {
     private static final String HANDLER_NAME = "realcoords-downstream-packet-bridge";
 
-    private final ExtensionLogger logger;
+    private final RealCoordsLog logger;
 
-    public DownstreamSessionHook(ExtensionLogger logger) {
+    public DownstreamSessionHook(RealCoordsLog logger) {
         this.logger = logger;
     }
 
@@ -72,7 +71,7 @@ public final class DownstreamSessionHook extends SessionAdapter {
             logger.info("[RealCoords] Passive downstream packet bridge installed before MCProtocolLib manager ("
                     + session.getClass().getSimpleName() + "). No coordinates are being changed.");
         } catch (Throwable error) {
-            logger.severe("[RealCoords] Failed to install the downstream packet bridge; closing this Java session.", error);
+            logger.error("[RealCoords] Failed to install the downstream packet bridge; closing this Java session.", error);
             session.disconnect("RealCoords could not safely initialize the downstream packet hook.", error);
         }
     }
