@@ -246,7 +246,6 @@ final class ShiftSession {
             trackEntity(a.getRuntimeEntityId(), toR(a.getPosition()), null, false);
         } else if (p instanceof UpdateSubChunkBlocksPacket u) {
             recordSubChunkBlocks(u);
-            BedrockPacketCoordinateTransformer.transformOutbound(u, coordinates());
         } else if (p instanceof LevelEventGenericPacket event) {
             if (!BedrockPacketCoordinateTransformer.transformOutbound(event, coordinates())) {
                 warnOnce("generic-event-" + event.getType(),
@@ -579,8 +578,8 @@ final class ShiftSession {
         byte[] raw = e.zipped ? inflate(e.data, e.rawLen) : e.data;
         if (raw == null) return;
         LevelChunkPacket pk = new LevelChunkPacket();
-        pk.setChunkX(e.cx - offX / 16);
-        pk.setChunkZ(e.cz - offZ / 16);
+        pk.setChunkX(e.cx);
+        pk.setChunkZ(e.cz);
         pk.setSubChunksLength(e.subLen);
         pk.setDimension(e.dim);
         pk.setSubChunkLimit(e.subLimit);
@@ -626,8 +625,6 @@ final class ShiftSession {
         int rcx = c.getChunkX(), rcz = c.getChunkZ();
         if (c.isRequestSubChunks() || c.isCachingEnabled()) {
             warnOnce("chunkmode", "LevelChunk 使用子區塊請求／快取模式，無法改寫，區塊可能錯位");
-            c.setChunkX(rcx - offX / 16);
-            c.setChunkZ(rcz - offZ / 16);
             return;
         }
         ByteBuf old = c.getData();
@@ -638,15 +635,8 @@ final class ShiftSession {
         } else if (!chunks.isEmpty()) {
             chunks.clear();
         }
-        if (offX != 0 || offZ != 0) {
-            byte[] shifted = ChunkRewriter.rewrite(raw, offX, offZ, cfg, log);
-            if (shifted != raw) {
-                c.setData(Unpooled.wrappedBuffer(shifted));
-                ReferenceCountUtil.safeRelease(old);
-            }
-        }
-        c.setChunkX(rcx - offX / 16);
-        c.setChunkZ(rcz - offZ / 16);
+        // Chunk coordinates and the Geyser chunk cache are already local-space.
+        // The section payload is coordinate-relative and must remain byte-for-byte intact.
     }
 
     private ChunkEntry makeEntry(LevelChunkPacket c, byte[] raw) {
@@ -850,6 +840,46 @@ final class ShiftSession {
 
     Object javaInbound(Object packet) {
         // Shift absolute entity positions before Geyser narrows them to Bedrock floats.
+        // Keep Geyser's player position, chunk cache, block cache and Bedrock output
+        // in ONE local coordinate space. Previously only player/entity positions were
+        // localized while chunks and block updates stayed at Java world coordinates;
+        // that made collision lookups query the wrong location (the player fell through).
+        if (packet instanceof org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundLevelChunkWithLightPacket p) {
+            int chunkOffsetX = Math.floorDiv(offX, 16);
+            int chunkOffsetZ = Math.floorDiv(offZ, 16);
+            if (chunkOffsetX != 0 || chunkOffsetZ != 0) {
+                return p.withX(p.getX() - chunkOffsetX).withZ(p.getZ() - chunkOffsetZ);
+            }
+        }
+        if (packet instanceof org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundBlockUpdatePacket p) {
+            var entry = p.getEntry();
+            Vector3i pos = entry.getPosition();
+            Vector3i local = Vector3i.from(pos.getX() - offX, pos.getY(), pos.getZ() - offZ);
+            if (!local.equals(pos)) {
+                return p.withEntry(new org.geysermc.mcprotocollib.protocol.data.game.level.block.BlockChangeEntry(local, entry.getBlock()));
+            }
+        }
+        if (packet instanceof org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundSectionBlocksUpdatePacket p) {
+            int chunkOffsetX = Math.floorDiv(offX, 16);
+            int chunkOffsetZ = Math.floorDiv(offZ, 16);
+            if (chunkOffsetX != 0 || chunkOffsetZ != 0) {
+                var entries = p.getEntries();
+                var shifted = new org.geysermc.mcprotocollib.protocol.data.game.level.block.BlockChangeEntry[entries.length];
+                for (int i = 0; i < entries.length; i++) {
+                    Vector3i pos = entries[i].getPosition();
+                    shifted[i] = new org.geysermc.mcprotocollib.protocol.data.game.level.block.BlockChangeEntry(
+                            Vector3i.from(pos.getX() - offX, pos.getY(), pos.getZ() - offZ), entries[i].getBlock());
+                }
+                return new org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundSectionBlocksUpdatePacket(
+                        p.getChunkX() - chunkOffsetX, p.getChunkY(), p.getChunkZ() - chunkOffsetZ, shifted);
+            }
+        }
+        if (packet instanceof org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundBlockEntityDataPacket p) {
+            Vector3i pos = p.getPosition();
+            Vector3i local = Vector3i.from(pos.getX() - offX, pos.getY(), pos.getZ() - offZ);
+            if (!local.equals(pos)) return p.withPosition(local);
+        }
+
         if (packet instanceof org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundAddEntityPacket p) {
             double shiftedX = p.getX() - offX;
             double shiftedZ = p.getZ() - offZ;
