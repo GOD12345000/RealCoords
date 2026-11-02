@@ -26,68 +26,55 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
 
-          # Point Gradle at the current OpenCollab Maven repository.
+          # Use the current OpenCollab Maven repository for Geyser dependencies.
           build = Path("RealCoords/build.gradle.kts")
-          s = build.read_text()
-          start = s.index("repositories {")
-          end = s.index("\n}\n\ndependencies", start)
-          s = s[:start] + """repositories {
+          text = build.read_text()
+          start = text.index("repositories {")
+          end = text.index("\n}\n\ndependencies", start)
+          text = text[:start] + """repositories {
               mavenCentral()
               maven("https://repo.opencollab.dev/main/")
-          }""" + s[end + 2:]
-          build.write_text(s)
+          }""" + text[end + 2:]
+          build.write_text(text)
 
-          # Adapt the source to the Cloudburst Protocol API bundled by Geyser 2.12.1.
+          # Update the source to the Cloudburst Protocol API used by Geyser 2.12.1.
           source = Path("RealCoords/src/main/java/dev/realcoords/ShiftSession.java")
-          s = source.read_text()
-          s = s.replace(
-              "import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.InventoryTransactionType;",
-              "import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.InventoryTransactionType;\\n"
-              "import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.ItemUseTransaction;"
-          )
-          s = s.replace("EntityDataTypes.PLAYER_BED_POSITION", "EntityDataTypes.BED_POSITION")
-          s = s.replace("EntityDataTypes.BLOCK_TARGET", "EntityDataTypes.BLOCK_TARGET_POS")
+          text = source.read_text()
+          old_import = "import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.InventoryTransactionType;"
+          new_import = old_import + chr(10) + "import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.ItemUseTransaction;"
+          if "import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.ItemUseTransaction;" not in text:
+              if old_import not in text:
+                  raise SystemExit("Could not find InventoryTransactionType import")
+              text = text.replace(old_import, new_import)
 
-          old = """    private void invTx(InventoryTransactionPacket t) {
-          if (t == null) return;
-          if (t.getPlayerPosition() != null) t.setPlayerPosition(toR(t.getPlayerPosition()));
-          if (t.getTransactionType() == InventoryTransactionType.ITEM_USE && t.getBlockPosition() != null) {
-              t.setBlockPosition(toR(t.getBlockPosition()));
-          }
-          }
-          """
-          new = """    private void invTx(InventoryTransactionPacket t) {
-          if (t == null) return;
-          if (t.getPlayerPosition() != null) t.setPlayerPosition(toR(t.getPlayerPosition()));
-          if (t.getTransactionType() == InventoryTransactionType.ITEM_USE && t.getBlockPosition() != null) {
-              t.setBlockPosition(toR(t.getBlockPosition()));
-          }
-          }
+          text = text.replace("EntityDataTypes.PLAYER_BED_POSITION", "EntityDataTypes.BED_POSITION")
+          text = text.replace("EntityDataTypes.BLOCK_TARGET", "EntityDataTypes.BLOCK_TARGET_POS")
 
-          private void invTx(ItemUseTransaction t) {
-          if (t == null) return;
-          if (t.getPlayerPosition() != null) t.setPlayerPosition(toR(t.getPlayerPosition()));
-          // 0 = place/click block, 1 = use/click air, 2 = destroy, 3 = attack.
-          if (t.getActionType() != 1 && t.getActionType() != 3 && t.getBlockPosition() != null) {
-              t.setBlockPosition(toR(t.getBlockPosition()));
-          }
-          }
+          method_marker = "    private void onAuthInput(PlayerAuthInputPacket a) {"
+          if "private void invTx(ItemUseTransaction t)" not in text:
+              method = """
+              private void invTx(ItemUseTransaction t) {
+                  if (t == null) return;
+                  if (t.getPlayerPosition() != null) t.setPlayerPosition(toR(t.getPlayerPosition()));
+                  // Action type 2 is the block item-interaction transaction.
+                  if (t.getActionType() == 2 && t.getBlockPosition() != null) {
+                      t.setBlockPosition(toR(t.getBlockPosition()));
+                  }
+              }
+
           """
-          if "private void invTx(ItemUseTransaction t)" not in s:
-              # Match the exact method body while preserving its indentation.
-              marker = "    private void invTx(InventoryTransactionPacket t) {"
-              i = s.index(marker)
-              j = s.index("\n    private void onAuthInput", i)
-              block = s[i:j]
-              s = s[:j] + "\n" + new.replace("\\n", "\n").replace("\n          ", "\n    ").replace("\n          ", "\n    ") + s[j:]
-          old_actions = """                    it.set(new PlayerBlockActionData(x.getAction(), toR(x.getBlockPosition()), x.getFace()));"""
-          if old_actions in s:
-              s = s.replace(old_actions, "                    x.setBlockPosition(toR(x.getBlockPosition()));")
-          if "EntityDataTypes.PLAYER_BED_POSITION" in s or "EntityDataTypes.BLOCK_TARGET)" in s:
-              raise SystemExit("Entity metadata API replacement did not apply")
-          if "new PlayerBlockActionData(" in s:
-              raise SystemExit("PlayerBlockActionData constructor replacement did not apply")
-          source.write_text(s)
+              if method_marker not in text:
+                  raise SystemExit("Could not find onAuthInput insertion point")
+              text = text.replace(method_marker, method + method_marker, 1)
+
+          old_action = "it.set(new PlayerBlockActionData(x.getAction(), toR(x.getBlockPosition()), x.getFace()));"
+          if old_action in text:
+              text = text.replace(old_action, "x.setBlockPosition(toR(x.getBlockPosition()));")
+          if "new PlayerBlockActionData(" in text:
+              raise SystemExit("Unsupported PlayerBlockActionData constructor remains")
+          if "EntityDataTypes.PLAYER_BED_POSITION" in text or "EntityDataTypes.BLOCK_TARGET" in text:
+              raise SystemExit("Outdated EntityDataTypes reference remains")
+          source.write_text(text)
           PY
 
       - name: Set up Java 21
