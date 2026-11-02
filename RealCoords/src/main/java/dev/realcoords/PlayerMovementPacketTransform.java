@@ -4,6 +4,8 @@ import org.cloudburstmc.math.vector.Vector3d;
 import org.geysermc.mcprotocollib.network.packet.Packet;
 import org.geysermc.mcprotocollib.protocol.data.game.entity.player.PositionElement;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.player.ClientboundPlayerPositionPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundAddEntityPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundTeleportEntityPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundMovePlayerPosPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundMovePlayerPosRotPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.level.ServerboundAcceptTeleportationPacket;
@@ -25,6 +27,22 @@ public final class PlayerMovementPacketTransform {
      * Relative X/Z components are deltas and must remain unchanged.
      */
     public static Packet toLocal(Packet packet, CoordinateTransform origin) {
+        if (packet instanceof ClientboundAddEntityPacket spawnPacket) {
+            return spawnPacket
+                    .withX(origin.toLocalX(spawnPacket.getX()))
+                    .withZ(origin.toLocalZ(spawnPacket.getZ()));
+        }
+        if (packet instanceof ClientboundTeleportEntityPacket teleportPacket) {
+            boolean relativeX = teleportPacket.getRelatives().contains(PositionElement.X);
+            boolean relativeZ = teleportPacket.getRelatives().contains(PositionElement.Z);
+            Vector3d position = teleportPacket.getPosition();
+            Vector3d localPosition = Vector3d.from(
+                    origin.toLocalX(position.getX(), relativeX),
+                    position.getY(),
+                    origin.toLocalZ(position.getZ(), relativeZ)
+            );
+            return teleportPacket.withPosition(localPosition);
+        }
         if (packet instanceof ClientboundPlayerPositionPacket positionPacket) {
             boolean relativeX = positionPacket.getRelatives().contains(PositionElement.X);
             boolean relativeZ = positionPacket.getRelatives().contains(PositionElement.Z);
