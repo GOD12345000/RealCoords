@@ -4,7 +4,7 @@ RealCoords 是一個 Geyser Extension，目標是在不改動 Java 世界真實�
 
 > **目前狀態：架構重寫中，尚不可用於正式遊戲。**
 >
-> 目前分支正在由舊的 Bedrock 網路邊緣座標偏移方案，改為 Java downstream 封包層的座標原點重定位。舊方案可能讓 Geyser 內部座標狀態不一致，已在本分支停用。新的 Geyser 初始化掛鉤仍是提案／開發階段，尚未完成實作與整合測試。請勿把此分支建置的 JAR 部署到正式伺服器以期待座標轉換功能。
+> 目前分支正在由舊的 Bedrock 網路邊緣座標偏移方案，改為 Java downstream 封包層的座標原點重定位。舊方案已停用。Geyser 初始化事件 Patch 已通過指定版本的套用檢查與核心編譯；RealCoords 也已加入被動封包觀察 bridge，正在驗證對 patched API 的編譯。尚未完成 TCP／LocalSession runtime integration test，也尚未啟用座標轉換。請勿部署到正式伺服器。
 
 ## 目前開發基準
 
@@ -32,11 +32,13 @@ RealCoords 是一個 Geyser Extension，目標是在不改動 Java 世界真實�
 
 - [x] 建立 `CoordinateTransform` 核心轉換類別。
 - [x] 加入 double 精度、區塊對齊、整數座標與溢位檢查。
-- [x] 建立 `CoordinateTransformTest` 測試案例（尚未在目前執行環境實際執行）。
+- [x] 建立 `CoordinateTransformTest`，並在 GitHub Actions 的 Java 21 `clean build` 中成功執行。
 - [x] 查證 Geyser `a973709` 的 downstream 建立生命週期。
 - [x] 查證 MCProtocolLib 26.3 的 listener、Netty pipeline 與 `ConnectedEvent` 行為。
 - [x] 確認 TCP 與 Geyser `LocalSession` 共用 MCProtocolLib channel initializer。
-- [x] 撰寫 Geyser downstream 初始化事件提案與 patch 草稿。
+- [x] 撰寫並驗證 Geyser downstream 初始化事件 Patch；指定 Geyser commit 的 `:core:compileJava` 已成功。
+- [x] 實作被動 Java downstream Netty packet bridge，尚待 patched API 專用 CI 完成編譯。
+- [x] 建立獨立 rotating file logger，避免一般診斷訊息混入 Velocity／Geyser console。
 - [x] 停用舊的 Bedrock-only 座標轉換入口，避免新舊座標架構同時作用。
 
 ## 正在處理
@@ -51,9 +53,10 @@ Geyser 目前會在 `connectDownstream()` 建立 Java session，再依序註冊 
 
 - [Geyser downstream hook proposal](docs/geyser-downstream-hook-proposal.md)
 - [Geyser lifecycle investigation](docs/geyser-java-hook-investigation.md)
-- [Geyser patch draft](patches/geyser/a973709-downstream-session-initialize.patch)
+- [Geyser patch](patches/geyser/a973709-downstream-session-initialize.patch)
+- [Passive packet bridge implementation and runtime checklist](docs/downstream-packet-bridge.md)
 
-Patch 目前只存在 RealCoords repository，尚未套用到 Geyser fork，也尚未編譯或整合測試。
+Patch 目前只存在 RealCoords repository，尚未套用到正式 Geyser 發行版或 fork。CI 已在乾淨 checkout 中套用 Patch 並成功編譯 Geyser core。
 
 ## 建置與測試
 
@@ -80,7 +83,7 @@ gradle --no-daemon -p RealCoords \
 GitHub Actions 已驗證：
 - RealCoords 在 Java 21 環境執行 `clean build` 與 JUnit 測試成功。
 - Geyser Patch 可套用到指定 commit，且 patched `:core:compileJava` 成功。
-- 新增 downstream bridge 後，CI 會再以 patched API JAR 編譯並測試 RealCoords。
+- 新增 downstream bridge 後，專用 CI 會以 patched API JAR 編譯並測試 RealCoords；目前正在執行。
 
 注意：目前的 bridge 只被設計為被動觀察封包，**不會轉換任何座標**。建置成功不代表 TCP／LocalSession 的實際連線封包順序已完成 runtime integration test，更不代表座標重定位功能已完成。
 
