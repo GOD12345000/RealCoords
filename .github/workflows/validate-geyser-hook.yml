@@ -7,13 +7,14 @@ on:
       - feature/coordinate-origin-rebasing
     paths:
       - "patches/geyser/**"
+      - "RealCoords/**"
       - ".github/workflows/validate-geyser-hook.yml"
 
 permissions:
   contents: read
 
 jobs:
-  validate-patch:
+  validate-patch-and-extension:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout RealCoords
@@ -32,12 +33,25 @@ jobs:
           distribution: temurin
           java-version: "21"
 
+      - name: Set up Gradle for RealCoords
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.10.2"
+
       - name: Verify patch applies cleanly
         working-directory: geyser
         run: |
           git apply --check ../patches/geyser/a973709-downstream-session-initialize.patch
           git apply ../patches/geyser/a973709-downstream-session-initialize.patch
 
-      - name: Compile patched Geyser core
+      - name: Compile patched Geyser API and core
         working-directory: geyser
-        run: ./gradlew --no-daemon :core:compileJava
+        run: ./gradlew --no-daemon :api:jar :core:compileJava
+
+      - name: Compile and test RealCoords against patched API
+        run: |
+          API_JAR="$(find geyser/api/build/libs -maxdepth 1 -type f -name 'api-*.jar' ! -name '*sources*' | head -n 1)"
+          test -n "$API_JAR"
+          gradle --no-daemon -p RealCoords \
+            -PgeyserPatchedApiJar="$GITHUB_WORKSPACE/$API_JAR" \
+            clean build
