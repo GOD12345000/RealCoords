@@ -12,10 +12,16 @@ import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.Serv
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.level.ServerboundAcceptTeleportationPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.level.ServerboundMoveVehiclePacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.level.ServerboundSignUpdatePacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.level.ServerboundBlockEntityTagQueryPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.level.ServerboundSetTestBlockPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.level.ServerboundJigsawGeneratePacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.level.ServerboundTestInstanceBlockActionPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundUseItemOnPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundPlayerActionPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.inventory.ServerboundSetCommandBlockPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.inventory.ServerboundSetJigsawBlockPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.inventory.ServerboundSetStructureBlockPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.inventory.ServerboundPickItemFromBlockPacket;
 
 /**
  * Pure entity, player, vehicle, and block-interaction packet transformations for one immutable origin.
@@ -89,6 +95,24 @@ public final class PlayerMovementPacketTransform {
         }
         if (packet instanceof ServerboundSignUpdatePacket signUpdatePacket) {
             return signUpdatePacket.withPosition(toRealBlockPosition(signUpdatePacket.getPosition(), origin));
+        }
+        if (packet instanceof ServerboundBlockEntityTagQueryPacket queryPacket) {
+            return queryPacket.withPosition(toRealBlockPosition(queryPacket.getPosition(), origin));
+        }
+        if (packet instanceof ServerboundSetTestBlockPacket testBlockPacket) {
+            return testBlockPacket.withPosition(toRealBlockPosition(testBlockPacket.getPosition(), origin));
+        }
+        if (packet instanceof ServerboundJigsawGeneratePacket jigsawGeneratePacket) {
+            return jigsawGeneratePacket.withPosition(toRealBlockPosition(jigsawGeneratePacket.getPosition(), origin));
+        }
+        if (packet instanceof ServerboundSetStructureBlockPacket structureBlockPacket) {
+            return structureBlockPacket.withPosition(toRealBlockPosition(structureBlockPacket.getPosition(), origin));
+        }
+        if (packet instanceof ServerboundPickItemFromBlockPacket pickBlockPacket) {
+            return pickBlockPacket.withPos(toRealBlockPosition(pickBlockPacket.getPos(), origin));
+        }
+        if (packet instanceof ServerboundTestInstanceBlockActionPacket testInstancePacket) {
+            return testInstancePacket.withPos(toRealBlockPosition(testInstancePacket.getPos(), origin));
         }
         if (packet instanceof ServerboundAcceptTeleportationPacket teleportPacket) {
             return teleportPacket
