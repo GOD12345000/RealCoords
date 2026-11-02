@@ -12,12 +12,15 @@ import org.geysermc.geyser.api.extension.ExtensionLogger;
 import org.geysermc.geyser.session.GeyserSession;
 
 import java.util.function.Consumer;
+import java.util.Map;
+import java.util.WeakHashMap;
 
 /**
  * 掛在該玩家 Bedrock 連線的 Netty 管線上，位置在封包編解碼器之後、BedrockPeer 之前：
  * 往客戶端的封包在編碼前經過這裡，來自客戶端的封包在 Geyser 處理前經過這裡。
  */
 final class SessionHook extends ChannelDuplexHandler {
+    private static final Map<GeyserSession, ShiftSession> SESSIONS = new WeakHashMap<>();
     private final ShiftSession s;
 
     private SessionHook(ShiftSession s) {
@@ -27,6 +30,7 @@ final class SessionHook extends ChannelDuplexHandler {
     static void install(GeyserSession gs, ShiftConfig cfg, ExtensionLogger log) {
         Channel ch = gs.getUpstream().getSession().getPeer().getChannel();
         ShiftSession session = new ShiftSession(gs, ch, cfg, log);
+        synchronized (SESSIONS) { SESSIONS.put(gs, session); }
         SessionHook hook = new SessionHook(session);
 
         ChannelPipeline pl = ch.pipeline();
@@ -40,6 +44,15 @@ final class SessionHook extends ChannelDuplexHandler {
         session.start();
         ch.closeFuture().addListener(f -> session.close());
         if (cfg.debug) log.info("[RealCoords] pipeline: " + pl.names());
+    }
+
+    static void installJava(GeyserSession gs) {
+        ShiftSession session;
+        synchronized (SESSIONS) { session = SESSIONS.get(gs); }
+        if (session == null) {
+            throw new IllegalStateException("RealCoords upstream hook has not been installed");
+        }
+        JavaSessionHook.install(gs, session);
     }
 
     @Override
