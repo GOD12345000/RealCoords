@@ -79,7 +79,19 @@ The best candidate is a two-stage attachment, subject to proving its timing:
 3. The adapter/handler must fail closed if it cannot be installed before the first coordinate-bearing Java play packet. It must log the installation state and the first relevant packet sequence.
 4. Handle both `ClientNetworkSession` and Geyser's `LocalSession` (which extends `ClientNetworkSession`) without assuming a TCP-only implementation.
 
-This is a candidate, not yet an approved implementation. The remaining uncertainty is the race between the scheduled installation task and `downstream.connect(false)` / `ConnectedEvent`. We must verify whether the adapter can always be registered before `ConnectedEvent`, including local-channel and authentication completion paths. If it cannot, this strategy must not be used as a guaranteed early hook.
+This is a candidate, not yet an approved implementation. The remaining uncertainty is the race between the scheduled installation task and `downstream.connect(false)` / `ConnectedEvent`.
+
+Additional source facts:
+
+- `GeyserServerInitializer.initSession()` creates the Geyser session with `this.eventLoopGroup.next()`. This is Geyser's per-session tick EventLoop; it must not be assumed to be the Bedrock channel's event loop.
+- `GeyserSession.executeInEventLoop()` always queues work on that tick EventLoop. `ensureInEventLoop()` runs inline only when the caller is already on that exact EventLoop.
+- The Java downstream is created and `connect(false)` is called synchronously after `SessionLoginEvent` returns. The Netty connection and the Geyser tick EventLoop can progress independently.
+
+Therefore, a task queued from `SessionLoginEvent` is a plausible way to observe the now-created downstream, but it is not a proven guarantee that the task executes before `ConnectedEvent`. The installer must attach an early listener before connection activation or detect that activation already occurred and fail closed. Do not treat a successful eventual pipeline lookup as proof that the first-packet boundary was met.
+
+The proposed listener-ordering mechanism also needs care: `NetworkSession` uses `CopyOnWriteArrayList`, so reordering listeners during a callback affects subsequent dispatch iterations, not the already-created iteration snapshot. A `ConnectedEvent` callback can potentially reorder the list for later packet events, but only if the custom adapter was registered before that event begins.
+
+We must verify whether the adapter can always be registered before `ConnectedEvent`, including local-channel and authentication completion paths. If it cannot, this strategy must not be used as a guaranteed early hook.
 
 ## Important constraints
 
