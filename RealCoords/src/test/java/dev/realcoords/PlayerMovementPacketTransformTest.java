@@ -5,6 +5,7 @@ import org.geysermc.mcprotocollib.network.packet.Packet;
 import org.geysermc.mcprotocollib.protocol.data.game.entity.player.PositionElement;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.player.ClientboundPlayerPositionPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundMovePlayerPosPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.level.ServerboundAcceptTeleportationPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundMovePlayerPosRotPacket;
 import org.junit.jupiter.api.Test;
 
@@ -81,6 +82,22 @@ class PlayerMovementPacketTransformTest {
         assertEquals(-20, result.getPitch());
         assertFalse(result.isOnGround());
         assertTrue(result.isHorizontalCollision());
+    }
+
+    @Test
+    void restoresTeleportAcknowledgementCoordinatesForJava() {
+        ServerboundAcceptTeleportationPacket input =
+                new ServerboundAcceptTeleportationPacket(12, 12.5, 70, -7.25, 45, 10);
+
+        ServerboundAcceptTeleportationPacket result = (ServerboundAcceptTeleportationPacket)
+                PlayerMovementPacketTransform.toReal(input, ORIGIN);
+
+        assertEquals(12, result.getId());
+        assertEquals(25_000_012.5, result.getX());
+        assertEquals(70, result.getY());
+        assertEquals(-17_000_007.25, result.getZ());
+        assertEquals(45, result.getYRot());
+        assertEquals(10, result.getXRot());
     }
 
     @Test
