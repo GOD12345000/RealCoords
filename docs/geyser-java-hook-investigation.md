@@ -70,28 +70,49 @@ MCProtocolLib's `ClientNetworkSession.connect(false)` builds a Netty Bootstrap a
 
 The manager handler is the `NetworkSession` itself. A duplex handler placed immediately before the manager would see decoded inbound `Packet` objects before MCProtocolLib dispatches them, and would see outbound packets before the manager's channel context passes them to earlier outbound handlers. The existing RealCoords diagnostic approach of locating the `NetworkSession` handler and inserting before it has the right directionality once the channel exists.
 
-## Candidate hook strategy
+## LocalSession and channel-hook verification
 
-The best candidate is a two-stage attachment, subject to proving its timing:
+The exact Geyser `a973709` source imports `org.geysermc.geyser.network.java.LocalSession`, not a session-auth package. That class:
 
-1. During `SessionLoginEvent`, schedule an installation task on the Geyser session's `tickEventLoop`. The downstream object is not assigned yet, so the task must defer until it becomes available; it must not assume the downstream exists synchronously in the event callback.
-2. Once the downstream `ClientSession` exists, attach a small MCProtocolLib `SessionAdapter` before the connection becomes active. Its `connected(ConnectedEvent)` callback can install the Netty duplex handler on the already initialized channel before the client/server login handshake completes. This avoids transforming handshake packets and provides a channel-event-loop installation point.
-3. The adapter/handler must fail closed if it cannot be installed before the first coordinate-bearing Java play packet. It must log the installation state and the first relevant packet sequence.
-4. Handle both `ClientNetworkSession` and Geyser's `LocalSession` (which extends `ClientNetworkSession`) without assuming a TCP-only implementation.
+- Extends MCProtocolLib `ClientNetworkSession`.
+- Overrides the channel factory and event-loop group for Geyser's local-channel implementation.
+- Overrides `getChannelHandler()`, but still constructs MCProtocolLib's `MinecraftChannelInitializer`.
+- Calls `super.initChannel(channel)` after applying the spoofed remote address and HAProxy setup.
 
-This is a candidate, not yet an approved implementation. The remaining uncertainty is the race between the scheduled installation task and `downstream.connect(false)` / `ConnectedEvent`.
+Therefore LocalSession uses the same MCProtocolLib `NetworkSession` handler and the same channel initialization sequence. The ordinary TCP session and Geyser's local-channel session can use the same downstream listener and Netty-pipeline strategy. This conclusion is source-verified; it is not yet a runtime integration test.
 
-Additional source facts:
+## Exact deterministic ordering
 
-- `GeyserServerInitializer.initSession()` creates the Geyser session with `this.eventLoopGroup.next()`. This is Geyser's per-session tick EventLoop; it must not be assumed to be the Bedrock channel's event loop.
-- `GeyserSession.executeInEventLoop()` always queues work on that tick EventLoop. `ensureInEventLoop()` runs inline only when the caller is already on that exact EventLoop.
-- The Java downstream is created and `connect(false)` is called synchronously after `SessionLoginEvent` returns. The Netty connection and the Geyser tick EventLoop can progress independently.
+At the Geyser `a973709` call site, the relevant order is:
 
-Therefore, a task queued from `SessionLoginEvent` is a plausible way to observe the now-created downstream, but it is not a proven guarantee that the task executes before `ConnectedEvent`. The installer must attach an early listener before connection activation or detect that activation already occurred and fail closed. Do not treat a successful eventual pipeline lookup as proof that the first-packet boundary was met.
+1. Create `ClientNetworkSession` or `LocalSession`.
+2. Add MCProtocolLib `ClientListener`.
+3. Add Geyser `GeyserSessionAdapter`.
+4. Call `downstream.connect(false)`.
 
-The proposed listener-ordering mechanism also needs care: `NetworkSession` uses `CopyOnWriteArrayList`, so reordering listeners during a callback affects subsequent dispatch iterations, not the already-created iteration snapshot. A `ConnectedEvent` callback can potentially reorder the list for later packet events, but only if the custom adapter was registered before that event begins.
+MCProtocolLib `26.3` confirms that `NetworkSession.channelActive()` stores the channel, synchronously calls `ConnectedEvent` on the registered listeners, and only then flushes the pending outbound packet queue. The `MinecraftChannelInitializer` installs the packet codec and then the `NetworkSession` manager handler.
 
-We must verify whether the adapter can always be registered before `ConnectedEvent`, including local-channel and authentication completion paths. If it cannot, this strategy must not be used as a guaranteed early hook.
+A custom `SessionAdapter` registered between `ClientListener` and `GeyserSessionAdapter` therefore has two useful guarantees:
+
+- Its `connected(ConnectedEvent)` callback runs after the channel and manager handler exist, but before queued handshake packets are flushed.
+- A duplex handler inserted immediately before the `NetworkSession` manager sees decoded inbound packet objects before listener dispatch and outbound packet objects before packet encoding.
+
+The same reasoning applies to `LocalSession` because it inherits `ClientNetworkSession` and delegates channel initialization to the same initializer.
+
+## Revised hook decision
+
+The earlier tick-loop polling candidate is rejected. It has no happens-before guarantee against the independent MCProtocolLib Netty EventLoop and cannot prove registration before `ConnectedEvent`.
+
+The deterministic design is now:
+
+1. Add a narrow downstream-initialization hook in Geyser's `connectDownstream()` after `ClientListener` is added and before `GeyserSessionAdapter` is added.
+2. During that synchronous callback, RealCoords registers a MCProtocolLib `SessionAdapter` on the provided downstream session.
+3. In `connected(ConnectedEvent)`, RealCoords inserts the duplex packet handler immediately before the `NetworkSession` pipeline handler.
+4. If the expected handler is missing, the channel is already active before registration, or insertion fails, RealCoords fails closed and reports a clear diagnostic. It must not silently fall back to late installation.
+
+The public API shape still needs a deliberate decision. At this Geyser commit, `api/build.gradle.kts` does not depend on MCProtocolLib or Netty; it only exposes the base API, math, and JetBrains annotations. Exposing `ClientSession` directly from a new public API event would therefore add MCProtocolLib as a published API dependency. That is technically straightforward but increases API coupling. The patch proposal should compare this minimal option with a narrow Geyser-owned SPI that hides MCProtocolLib and Netty types, then select the smallest stable contract that still permits ordered listener registration and early channel installation.
+
+No production packet transformation should be implemented until the hook patch is built against the exact Geyser revision and tested for both TCP and LocalSession paths.
 
 ## Important constraints
 
@@ -153,4 +174,4 @@ The event should be documented as an internal/downstream lifecycle hook and shou
 
 Do not implement a tick-loop polling installer as if it were guaranteed. Do not use `SessionJoinEvent`. Do not mutate MCProtocolLib's private listener list reflectively.
 
-The next implementation step should be to prepare a minimal Geyser patch/API proposal for the pre-connect downstream initialization event, then build RealCoords against that hook. Until that hook exists (or an equivalent deterministic mechanism is proven), packet transformation remains intentionally unwired.
+The next implementation step is to write and review the Geyser API/SPI proposal, then build and integration-test the hook against both TCP and LocalSession before implementing packet transformations. Until that hook exists (or an equivalent deterministic mechanism is proven), packet transformation remains intentionally unwired.
