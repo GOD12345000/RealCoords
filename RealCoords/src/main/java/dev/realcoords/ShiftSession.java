@@ -746,6 +746,15 @@ final class ShiftSession {
         }
     }
 
+    void javaHookReady(String pipeline) {
+        log.info("[RealCoords] Java downstream hook active: " + name());
+        if (cfg.debug) log.info("[RealCoords] Java pipeline: " + pipeline);
+    }
+
+    void javaHookClosed() {
+        log.info("[RealCoords] Java downstream hook closed: " + name());
+    }
+
     Object javaOutbound(Object packet) {
         // Geyser→Java：Bedrock local coordinates are converted to real Java doubles here.
         if (packet instanceof org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundMovePlayerPosPacket p) {
