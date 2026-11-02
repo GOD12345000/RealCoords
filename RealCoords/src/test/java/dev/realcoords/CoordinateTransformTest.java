@@ -16,7 +16,11 @@ class CoordinateTransformTest {
         assertEquals(-17_000_000.125 - transform.originZ(), localZ, 1e-9);
         assertTrue(Math.abs(localX) < 16);
         assertTrue(Math.abs(localZ) < 16);
-        assertEquals((float) localX, (float) transform.toLocalX(25_000_000.001));
+        float localizedBeforeNarrowing = (float) localX;
+        float narrowedTooEarly = (float) 25_000_000.001 - (float) transform.originX();
+        assertEquals(0.0f, narrowedTooEarly);
+        assertNotEquals(narrowedTooEarly, localizedBeforeNarrowing);
+        assertEquals((float) localX, localizedBeforeNarrowing);
     }
 
     @Test
