@@ -4,6 +4,10 @@ import org.cloudburstmc.math.vector.Vector3d;
 import org.geysermc.mcprotocollib.network.packet.Packet;
 import org.geysermc.mcprotocollib.protocol.data.game.entity.player.PositionElement;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.player.ClientboundPlayerPositionPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundAddEntityPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundTeleportEntityPacket;
+import org.geysermc.mcprotocollib.protocol.data.game.entity.type.EntityType;
+import java.util.UUID;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundMovePlayerPosPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.level.ServerboundAcceptTeleportationPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundMovePlayerPosRotPacket;
@@ -50,6 +54,42 @@ class PlayerMovementPacketTransformTest {
         assertEquals(4, result.getPosition().getY());
         assertEquals(-3.0, result.getPosition().getZ());
         assertEquals(input.getRelatives(), result.getRelatives());
+    }
+
+    @Test
+    void convertsEntitySpawnAbsolutePositionToLocalCoordinates() {
+        ClientboundAddEntityPacket input = new ClientboundAddEntityPacket(
+                21, UUID.randomUUID(), EntityType.ZOMBIE,
+                25_000_010.5, 64, -17_000_004.25, 90, 0, 90
+        );
+
+        ClientboundAddEntityPacket result = (ClientboundAddEntityPacket)
+                PlayerMovementPacketTransform.toLocal(input, ORIGIN);
+
+        assertEquals(10.5, result.getX());
+        assertEquals(64, result.getY());
+        assertEquals(-4.25, result.getZ());
+        assertEquals(input.getMovement(), result.getMovement());
+        assertEquals(input.getEntityId(), result.getEntityId());
+    }
+
+    @Test
+    void convertsEntityTeleportAbsoluteAxesAndPreservesRelativeAxes() {
+        ClientboundTeleportEntityPacket input = new ClientboundTeleportEntityPacket(
+                22, Vector3d.from(3.5, 5, -17_000_002.0),
+                Vector3d.from(0.1, 0.2, 0.3), 90, 15,
+                List.of(PositionElement.X), true
+        );
+
+        ClientboundTeleportEntityPacket result = (ClientboundTeleportEntityPacket)
+                PlayerMovementPacketTransform.toLocal(input, ORIGIN);
+
+        assertEquals(3.5, result.getPosition().getX());
+        assertEquals(5, result.getPosition().getY());
+        assertEquals(-2.0, result.getPosition().getZ());
+        assertEquals(input.getDeltaMovement(), result.getDeltaMovement());
+        assertEquals(input.getRelatives(), result.getRelatives());
+        assertTrue(result.isOnGround());
     }
 
     @Test
