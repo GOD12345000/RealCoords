@@ -2,9 +2,9 @@
 
 RealCoords 是一個 Geyser Extension，目標是在不改動 Java 世界真實座標的前提下，讓 Bedrock 客戶端在遠距離座標下仍使用較小、較穩定的本地座標。
 
-> **目前狀態：架構重寫中，尚不可用於正式遊戲。**
+> **目前狀態：啟動 Agent 與官方 Geyser API 整合已初步實作；尚未完成執行期驗證，不可用於正式遊戲。**
 >
-> 目前分支正在由舊的 Bedrock 網路邊緣座標偏移方案，改為 Java downstream 封包層的座標原點重定位。舊方案已停用。Geyser 初始化事件 Patch 已通過指定版本的套用檢查與核心編譯；RealCoords 也已加入被動封包觀察 bridge，正在驗證對 patched API 的編譯。尚未完成 TCP／LocalSession runtime integration test，也尚未啟用座標轉換。請勿部署到正式伺服器。
+> 使用獨立 Java Agent 在 JVM 啟動時掛接 Geyser 2.12.1 的 downstream listener 註冊點，不修改官方 Geyser JAR。RealCoords Extension 改為編譯對官方、未修改的 Geyser API。被動封包 bridge 尚未完成 Velocity + Geyser 的實際執行期驗證，也尚未啟用座標轉換。
 
 ## 目前開發基準
 
@@ -36,8 +36,10 @@ RealCoords 是一個 Geyser Extension，目標是在不改動 Java 世界真實�
 - [x] 查證 Geyser `a973709` 的 downstream 建立生命週期。
 - [x] 查證 MCProtocolLib 26.3 的 listener、Netty pipeline 與 `ConnectedEvent` 行為。
 - [x] 確認 TCP 與 Geyser `LocalSession` 共用 MCProtocolLib channel initializer。
-- [x] 撰寫並驗證 Geyser downstream 初始化事件 Patch；指定 Geyser commit 的 `:core:compileJava` 已成功。
-- [x] 實作被動 Java downstream Netty packet bridge，尚待 patched API 專用 CI 完成編譯。
+- [x] 確認官方 Geyser API 沒有可保證第一批 Java 封包攔截順序的 downstream session hook。
+- [x] 初步實作獨立 Java startup agent，在 `connectDownstream()` 第一個 listener 註冊前呼叫 RealCoords bridge。
+- [x] Extension 改為編譯官方、未修改的 Geyser API。
+- [x] 實作被動 Java downstream Netty packet bridge；尚待 CI 與真實伺服器執行期驗證。
 - [x] 建立獨立 rotating file logger，避免一般診斷訊息混入 Velocity／Geyser console。
 - [x] 停用舊的 Bedrock-only 座標轉換入口，避免新舊座標架構同時作用。
 
@@ -57,48 +59,17 @@ RealCoords 是一個 Geyser Extension，目標是在不改動 Java 世界真實�
 
 ### Geyser 初始化掛鉤
 
-Geyser 目前會在 `connectDownstream()` 建立 Java session，再依序註冊 MCProtocolLib `ClientListener` 與 Geyser `GeyserSessionAdapter`。
+官方 Geyser Extension API 沒有公開 downstream MCProtocolLib session 的早期初始化事件。因此本分支改用獨立 Java startup agent：在 Geyser 2.12.1 的 `GeyserSession.connectDownstream()` 中，於第一個 `addListener()` 前呼叫 RealCoords bridge，讓 RealCoords 的 `SessionAdapter` 先於 Geyser 的 `ClientListener` 註冊。
 
-重要細節：`ClientListener.connected()` 會在 `ConnectedEvent` 中立即送出初始握手與登入封包。因此 RealCoords 的 session listener 必須在 `ClientListener` **之前**註冊，並在自己的 `connected()` callback 中先安裝 Netty duplex handler，才能攔截第一個 outbound 封包。
+- 不修改官方 Geyser JAR。
+- 不使用 patched Geyser API。
+- 不使用 tick-loop polling。
+- Agent 目前針對 Geyser 2.12.1 的方法結構與兩次 listener 註冊進行嚴格檢查；結構不符時不注入。
+- 此方案仍是針對指定版本的 runtime bytecode hook，不是 Geyser 官方 API；升級 Geyser 時必須重新驗證。
 
-相關文件：
+建置、JVM 啟動參數與部署方式見 [Startup Agent](docs/startup-agent.md)。
 
-- [Geyser downstream hook proposal](docs/geyser-downstream-hook-proposal.md)
-- [Geyser lifecycle investigation](docs/geyser-java-hook-investigation.md)
-- [Geyser patch](patches/geyser/a973709-downstream-session-initialize.patch)
-- [Passive packet bridge implementation and runtime checklist](docs/downstream-packet-bridge.md)
-
-Patch 目前只存在 RealCoords repository，尚未套用到正式 Geyser 發行版或 fork。CI 已在乾淨 checkout 中套用 Patch 並成功編譯 Geyser core。
-
-## 建置與測試
-
-目前 RealCoords 使用 Geyser 新增的 `DownstreamSessionInitializeEvent`，因此必須先建置套用 Patch 的 Geyser API。
-
-1. Checkout 指定 Geyser commit `a9737092e526996c6e6f51707ff4cf44a8b4b3d2`。
-2. 將本專案的 `patches/geyser/a973709-downstream-session-initialize.patch` 套用到 Geyser 原始碼根目錄。
-3. 在 Geyser 原始碼根目錄執行：
-
-```bash
-./gradlew --no-daemon :api:jar :core:compileJava
-```
-
-4. 回到 RealCoords 專案根目錄，指定剛才產生的 patched API JAR（請依實際版本調整路徑）：
-
-```bash
-gradle --no-daemon -p RealCoords \
-  -PgeyserPatchedApiJar=/path/to/geyser/api/build/libs/api-2.12.1-SNAPSHOT.jar \
-  clean build
-```
-
-需要 JDK 21。RealCoords 的一般建置工作流程使用 Gradle 8.10.2。
-
-GitHub Actions 已驗證：
-- RealCoords 在 Java 21 環境執行 `clean build` 與 JUnit 測試成功。
-- Geyser Patch 可套用到指定 commit，且 patched `:core:compileJava` 成功。
-- 新增 downstream bridge 與後續封包轉換後，專用 CI 會以 patched API JAR 編譯並測試 RealCoords。這一輪新增封包轉換的執行結果尚未核實；不得把歷史上的成功紀錄當成這一輪已通過。
-
-注意：目前的 bridge 只被設計為被動觀察封包，**不會轉換任何座標**。建置成功不代表 TCP／LocalSession 的實際連線封包順序已完成 runtime integration test，更不代表座標重定位功能已完成。
-
+舊的 Geyser patch 與提案文件保留作為歷史調查資料，不是目前建置或部署流程的一部分。
 
 ## 分支安全約定
 
