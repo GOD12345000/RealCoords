@@ -8,7 +8,6 @@ import io.netty.channel.ChannelPromise;
 import org.cloudburstmc.protocol.bedrock.BedrockPeer;
 import org.cloudburstmc.protocol.bedrock.netty.BedrockBatchWrapper;
 import org.cloudburstmc.protocol.bedrock.netty.BedrockPacketWrapper;
-import org.geysermc.geyser.api.extension.ExtensionLogger;
 import org.geysermc.geyser.session.GeyserSession;
 
 import java.util.function.Consumer;
@@ -27,7 +26,7 @@ final class SessionHook extends ChannelDuplexHandler {
         this.s = s;
     }
 
-    static void install(GeyserSession gs, ShiftConfig cfg, ExtensionLogger log) {
+    static void install(GeyserSession gs, ShiftConfig cfg, RealCoordsLog log) {
         Channel ch = gs.getUpstream().getSession().getPeer().getChannel();
         ShiftSession session = new ShiftSession(gs, ch, cfg, log);
         synchronized (SESSIONS) { SESSIONS.put(gs, session); }
