@@ -218,8 +218,8 @@ final class ShiftSession {
             trackEntity(a.getRuntimeEntityId(), toR(a.getPosition()), null, false);
             metaShift(a.getMetadata());
         } else if (p instanceof AddHangingEntityPacket a) {
-            trackEntity(a.getRuntimeEntityId(), a.getPosition(), null, false);
-            a.setPosition(toB(a.getPosition()));
+            // Hanging entity spawn coordinates originate from the localized Java spawn packet.
+            trackEntity(a.getRuntimeEntityId(), toR(a.getPosition()), null, false);
         } else if (p instanceof UpdateSubChunkBlocksPacket u) {
             recordSubChunkBlocks(u);
             BedrockPacketCoordinateTransformer.transformOutbound(u, coordinates());
