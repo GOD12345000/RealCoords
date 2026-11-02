@@ -11,6 +11,9 @@ import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.play
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundAddEntityPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundTeleportEntityPacket;
 import org.geysermc.mcprotocollib.protocol.data.game.entity.type.EntityType;
+import org.geysermc.mcprotocollib.protocol.data.game.level.block.BlockChangeEntry;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundBlockUpdatePacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundSectionBlocksUpdatePacket;
 import java.util.UUID;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundMovePlayerPosPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.level.ServerboundAcceptTeleportationPacket;
@@ -97,6 +100,27 @@ class PlayerMovementPacketTransformTest {
         assertEquals(input.getDeltaMovement(), result.getDeltaMovement());
         assertEquals(input.getRelatives(), result.getRelatives());
         assertTrue(result.isOnGround());
+    }
+
+    @Test
+    void convertsInboundBlockAndSectionUpdatePositionsToLocalCoordinates() {
+        ClientboundBlockUpdatePacket blockUpdate = new ClientboundBlockUpdatePacket(
+                new BlockChangeEntry(Vector3i.from(25_000_012, 70, -17_000_007), 42)
+        );
+        ClientboundBlockUpdatePacket localBlockUpdate = (ClientboundBlockUpdatePacket)
+                PlayerMovementPacketTransform.toLocal(blockUpdate, ORIGIN);
+        assertEquals(Vector3i.from(12, 70, -7), localBlockUpdate.getEntry().getPosition());
+        assertEquals(42, localBlockUpdate.getEntry().getBlock());
+
+        ClientboundSectionBlocksUpdatePacket sectionUpdate = new ClientboundSectionBlocksUpdatePacket(
+                1_562_500, 4, -1_062_500,
+                new BlockChangeEntry(Vector3i.from(25_000_001, 65, -17_000_002), 99)
+        );
+        ClientboundSectionBlocksUpdatePacket localSectionUpdate = (ClientboundSectionBlocksUpdatePacket)
+                PlayerMovementPacketTransform.toLocal(sectionUpdate, ORIGIN);
+        assertEquals(0, localSectionUpdate.getChunkX());
+        assertEquals(0, localSectionUpdate.getChunkZ());
+        assertEquals(Vector3i.from(1, 65, -2), localSectionUpdate.getEntries()[0].getPosition());
     }
 
     @Test
