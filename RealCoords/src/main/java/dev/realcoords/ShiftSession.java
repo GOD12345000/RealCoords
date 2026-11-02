@@ -440,9 +440,13 @@ final class ShiftSession {
             ShiftConfig.Dim d = dimCfg();
             int nx = nextOff(offX, lx, d), nz = nextOff(offZ, lz, d);
             if (nx != offX || nz != offZ) {
-                applyShift(nx, nz, true);
-                hold = true;
-                holdDeadline = now + cfg.ackTimeoutMs;
+                // 延到目前 Bedrock 封包完成 Geyser 翻譯後再換原點，
+                // 避免同一個 movement 封包被新 offset 二次加偏移。
+                ch.eventLoop().execute(() -> {
+                    applyShift(nx, nz, true);
+                    hold = true;
+                    holdDeadline = System.currentTimeMillis() + cfg.ackTimeoutMs;
+                });
             }
         }
     }
@@ -742,7 +746,7 @@ final class ShiftSession {
         }
     }
 
-    void javaOutbound(Object packet) {
+    Object javaOutbound(Object packet) {
         // Geyser→Java：Bedrock local coordinates are converted to real Java doubles here.
         if (packet instanceof org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundMovePlayerPosPacket p) {
             double x = p.getX() + offX, z = p.getZ() + offZ;
