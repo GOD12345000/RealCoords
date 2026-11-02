@@ -4,12 +4,18 @@ on:
   push:
     branches: [main]
     paths:
+      - "RealCoords/**"
       - "RealCoords-source.zip"
+      - ".github/workflows/build.yml"
+  pull_request:
+    paths:
+      - "RealCoords/**"
       - ".github/workflows/build.yml"
   workflow_dispatch:
 
+# Write is needed only for the one-time migration of the old source ZIP.
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -17,65 +23,101 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          persist-credentials: true
 
-      - name: Extract and patch source
+      # Backward-compatible one-time migration. New forks already contain
+      # the normal source tree and will skip this block.
+      - name: Migrate legacy source archive (if present)
+        shell: bash
         run: |
-          test -f RealCoords-source.zip
-          unzip -q RealCoords-source.zip -d .
-          test -f RealCoords/build.gradle.kts
-          python3 - <<'PY'
-          from pathlib import Path
+          if [ "$GITHUB_EVENT_NAME" != "pull_request" ] && [ -f RealCoords-source.zip ]; then
+            unzip -q RealCoords-source.zip -d .
+            test -f RealCoords/build.gradle.kts
+            test -d RealCoords/src
 
-          # Use the current OpenCollab Maven repository for Geyser dependencies.
-          build = Path("RealCoords/build.gradle.kts")
-          text = build.read_text()
-          start = text.index("repositories {")
-          end = text.index("\n}\n\ndependencies", start)
-          text = text[:start] + """repositories {
-              mavenCentral()
-              maven("https://repo.opencollab.dev/main/")
-          }""" + text[end + 2:]
-          build.write_text(text)
+            python3 - <<'PY'
+            from pathlib import Path
 
-          # Update the source to the Cloudburst Protocol API used by Geyser 2.12.1.
-          source = Path("RealCoords/src/main/java/dev/realcoords/ShiftSession.java")
-          text = source.read_text()
-          old_import = "import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.InventoryTransactionType;"
-          new_import = old_import + chr(10) + "import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.ItemUseTransaction;"
-          if "import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.ItemUseTransaction;" not in text:
-              if old_import not in text:
-                  raise SystemExit("Could not find InventoryTransactionType import")
-              text = text.replace(old_import, new_import)
+            # Use the OpenCollab repository that currently hosts Geyser artifacts.
+            build = Path("RealCoords/build.gradle.kts")
+            content = build.read_text(encoding="utf-8")
+            start = content.index("repositories {")
+            end = content.index("\\n}\\n\\ndependencies", start)
+            content = content[:start] + """repositories {
+                mavenCentral()
+                maven("https://repo.opencollab.dev/main/")
+            }""" + content[end + 2:]
+            build.write_text(content, encoding="utf-8")
 
-          text = text.replace("EntityDataTypes.PLAYER_BED_POSITION", "EntityDataTypes.BED_POSITION")
-          text = text.replace("EntityDataTypes.BLOCK_TARGET", "EntityDataTypes.BLOCK_TARGET_POS")
+            # Pin the project defaults to the version used for the verified CI build.
+            props = Path("RealCoords/gradle.properties")
+            props.write_text(
+                "# Build target: Geyser 2.12.1 / Java 21\\n"
+                "geyserVersion=2.12.1-SNAPSHOT\\n"
+                "javaVersion=21\\n",
+                encoding="utf-8",
+            )
 
-          method_marker = "    private void onAuthInput(PlayerAuthInputPacket a) {"
-          if "private void invTx(ItemUseTransaction t)" not in text:
-              method = """
-              private void invTx(ItemUseTransaction t) {
-                  if (t == null) return;
-                  if (t.getPlayerPosition() != null) t.setPlayerPosition(toR(t.getPlayerPosition()));
-                  // Action type 2 is the block item-interaction transaction.
-                  if (t.getActionType() == 2 && t.getBlockPosition() != null) {
-                      t.setBlockPosition(toR(t.getBlockPosition()));
-                  }
-              }
+            # Use the Geyser API version in extension metadata (not Base API 1.0.0).
+            extension = Path("RealCoords/src/main/resources/extension.yml")
+            ext_text = extension.read_text(encoding="utf-8")
+            ext_text = ext_text.replace("api: 1.0.0", "api: 2.12.1")
+            extension.write_text(ext_text, encoding="utf-8")
 
-          """
-              if method_marker not in text:
-                  raise SystemExit("Could not find onAuthInput insertion point")
-              text = text.replace(method_marker, method + method_marker, 1)
+            # Apply the Cloudburst Protocol API compatibility edits that were
+            # previously hidden in CI, so the checked-in source is buildable itself.
+            source = Path("RealCoords/src/main/java/dev/realcoords/ShiftSession.java")
+            source_text = source.read_text(encoding="utf-8")
+            old_import = "import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.InventoryTransactionType;"
+            new_import = old_import + chr(10) + "import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.ItemUseTransaction;"
+            if "import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.ItemUseTransaction;" not in source_text:
+                if old_import not in source_text:
+                    raise SystemExit("Could not find InventoryTransactionType import")
+                source_text = source_text.replace(old_import, new_import)
 
-          old_action = "it.set(new PlayerBlockActionData(x.getAction(), toR(x.getBlockPosition()), x.getFace()));"
-          if old_action in text:
-              text = text.replace(old_action, "x.setBlockPosition(toR(x.getBlockPosition()));")
-          if "new PlayerBlockActionData(" in text:
-              raise SystemExit("Unsupported PlayerBlockActionData constructor remains")
-          if "EntityDataTypes.PLAYER_BED_POSITION" in text or "EntityDataTypes.BLOCK_TARGET)" in text:
-              raise SystemExit("Outdated EntityDataTypes reference remains")
-          source.write_text(text)
-          PY
+            source_text = source_text.replace("EntityDataTypes.PLAYER_BED_POSITION", "EntityDataTypes.BED_POSITION")
+            source_text = source_text.replace("EntityDataTypes.BLOCK_TARGET", "EntityDataTypes.BLOCK_TARGET_POS")
+
+            method_marker = "    private void onAuthInput(PlayerAuthInputPacket a) {"
+            if "private void invTx(ItemUseTransaction t)" not in source_text:
+                method = """
+                private void invTx(ItemUseTransaction t) {
+                    if (t == null) return;
+                    if (t.getPlayerPosition() != null) t.setPlayerPosition(toR(t.getPlayerPosition()));
+                    // Action type 2 is the block item-interaction transaction.
+                    if (t.getActionType() == 2 && t.getBlockPosition() != null) {
+                        t.setBlockPosition(toR(t.getBlockPosition()));
+                    }
+                }
+
+            """
+                if method_marker not in source_text:
+                    raise SystemExit("Could not find onAuthInput insertion point")
+                source_text = source_text.replace(method_marker, method + method_marker, 1)
+
+            old_action = "it.set(new PlayerBlockActionData(x.getAction(), toR(x.getBlockPosition()), x.getFace()));"
+            if old_action in source_text:
+                source_text = source_text.replace(old_action, "x.setBlockPosition(toR(x.getBlockPosition()));")
+            if "new PlayerBlockActionData(" in source_text:
+                raise SystemExit("Unsupported PlayerBlockActionData constructor remains")
+            if "EntityDataTypes.PLAYER_BED_POSITION" in source_text or "EntityDataTypes.BLOCK_TARGET)" in source_text:
+                raise SystemExit("Outdated EntityDataTypes reference remains")
+            source.write_text(source_text, encoding="utf-8")
+            PY
+
+            rm RealCoords-source.zip
+            printf 'build/\\n.gradle/\\n' > RealCoords/.gitignore
+
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add RealCoords
+            git add -u
+            if ! git diff --cached --quiet; then
+              git commit -m "Move RealCoords source into browsable project files"
+              git push
+            fi
+          fi
 
       - name: Set up Java 21
         uses: actions/setup-java@v5
@@ -88,9 +130,15 @@ jobs:
         with:
           gradle-version: "8.10.2"
 
+      - name: Verify project layout
+        run: |
+          test -f RealCoords/build.gradle.kts
+          test -f RealCoords/src/main/resources/extension.yml
+          test -d RealCoords/src/main/java
+
       - name: Build
         working-directory: RealCoords
-        run: gradle --no-daemon -PgeyserVersion=2.12.1-SNAPSHOT -PjavaVersion=21 clean build
+        run: gradle --no-daemon clean build
 
       - name: Upload JAR
         uses: actions/upload-artifact@v4
