@@ -34,6 +34,21 @@ class CoordinateTransformTest {
     }
 
     @Test
+    void relativePositionAxesAreNeverShifted() {
+        CoordinateTransform transform = new CoordinateTransform(25_000_000, -17_000_000);
+
+        assertEquals(12.5, transform.toLocalX(12.5, true));
+        assertEquals(-7.25, transform.toLocalZ(-7.25, true));
+        assertEquals(12.5, transform.toRealX(12.5, true));
+        assertEquals(-7.25, transform.toRealZ(-7.25, true));
+
+        assertEquals(12.5, transform.toLocalX(25_000_012.5, false));
+        assertEquals(-7.25, transform.toLocalZ(-17_000_007.25, false));
+        assertEquals(25_000_012.5, transform.toRealX(12.5, false));
+        assertEquals(-17_000_007.25, transform.toRealZ(-7.25, false));
+    }
+
+    @Test
     void blockAndChunkCoordinatesRoundTripExactly() {
         CoordinateTransform transform = new CoordinateTransform(-23_255_296, 17_909_760);
 
