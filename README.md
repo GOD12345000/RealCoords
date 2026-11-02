@@ -95,7 +95,7 @@ gradle --no-daemon -p RealCoords \
 GitHub Actions 已驗證：
 - RealCoords 在 Java 21 環境執行 `clean build` 與 JUnit 測試成功。
 - Geyser Patch 可套用到指定 commit，且 patched `:core:compileJava` 成功。
-- 新增 downstream bridge 後，專用 CI 會以 patched API JAR 編譯並測試 RealCoords；目前正在執行。
+- 新增 downstream bridge 與後續封包轉換後，專用 CI 會以 patched API JAR 編譯並測試 RealCoords。這一輪新增封包轉換的執行結果尚未核實；不得把歷史上的成功紀錄當成這一輪已通過。
 
 注意：目前的 bridge 只被設計為被動觀察封包，**不會轉換任何座標**。建置成功不代表 TCP／LocalSession 的實際連線封包順序已完成 runtime integration test，更不代表座標重定位功能已完成。
 
