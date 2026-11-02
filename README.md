@@ -47,9 +47,10 @@ RealCoords 是一個 Geyser Extension，目標是在不改動 Java 世界真實�
 
 已新增 `PlayerMovementPacketTransform`，目前只提供可獨立測試的封包轉換函式：
 
-- Java → Geyser：只將絕對傳送位置的 X/Z 轉成本地座標；相對 X/Z、Y、速度、旋轉與其他旗標保持不變。
-- Geyser → Java：還原玩家絕對移動位置，以及 1.21.8 對應 MCProtocolLib 26.3 的傳送確認封包座標。
-- 不處理旋轉、速度、狀態封包，也不在此階段修改 Netty bridge。
+- Java → Geyser：轉換玩家傳送、實體生成與實體傳送的絕對 X/Z；相對 X/Z、Y、速度、旋轉與其他旗標保持不變。
+- Geyser → Java：還原玩家與載具絕對位置、傳送確認，以及方塊互動／挖掘／告示牌／命令方塊／拼圖方塊等封包中的方塊座標。
+- 實體相對移動封包、旋轉、速度與狀態封包不做原點平移。
+- 不在此階段修改 Netty bridge。
 - 已新增對應 JUnit 測試；仍需由 patched Geyser API 的 CI 實際編譯驗證。
 
 **目前沒有啟用座標轉換。** 在原點生命週期、區塊／實體／互動座標同步完成前，不會把這個純轉換器接入正式封包管線。
