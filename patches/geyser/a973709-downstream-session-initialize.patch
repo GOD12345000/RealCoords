@@ -75,13 +75,13 @@ new file mode 100644
 diff --git a/core/src/main/java/org/geysermc/geyser/session/GeyserSession.java b/core/src/main/java/org/geysermc/geyser/session/GeyserSession.java
 --- a/core/src/main/java/org/geysermc/geyser/session/GeyserSession.java
 +++ b/core/src/main/java/org/geysermc/geyser/session/GeyserSession.java
-@@ -124,5 +124,6 @@ import org.geysermc.geyser.api.entity.type.player.GeyserPlayerEntity;
+@@ -125,4 +125,5 @@
  import org.geysermc.geyser.api.event.bedrock.SessionDisconnectEvent;
  import org.geysermc.geyser.api.event.bedrock.SessionLoginEvent;
 +import org.geysermc.geyser.api.event.downstream.DownstreamSessionInitializeEvent;
  import org.geysermc.geyser.api.network.RemoteServer;
  import org.geysermc.geyser.api.skin.SkinData;
-@@ -1243,7 +1243,15 @@
+@@ -1243,8 +1243,15 @@
          // We manually add the default listener to ensure the order of listeners.
          protocol.setUseDefaultListeners(false);
  
