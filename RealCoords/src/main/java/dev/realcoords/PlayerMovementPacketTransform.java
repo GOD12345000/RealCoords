@@ -1,6 +1,7 @@
 package dev.realcoords;
 
 import org.cloudburstmc.math.vector.Vector3d;
+import org.cloudburstmc.math.vector.Vector3i;
 import org.geysermc.mcprotocollib.network.packet.Packet;
 import org.geysermc.mcprotocollib.protocol.data.game.entity.player.PositionElement;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.player.ClientboundPlayerPositionPacket;
@@ -9,6 +10,12 @@ import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.Clie
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundMovePlayerPosPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundMovePlayerPosRotPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.level.ServerboundAcceptTeleportationPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.level.ServerboundMoveVehiclePacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.level.ServerboundSignUpdatePacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundUseItemOnPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundPlayerActionPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.inventory.ServerboundSetCommandBlockPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.inventory.ServerboundSetJigsawBlockPacket;
 
 /**
  * Pure player-position packet transformations for one immutable origin.
@@ -62,6 +69,27 @@ public final class PlayerMovementPacketTransform {
      * Movement deltas, rotation-only packets, and status-only packets are untouched.
      */
     public static Packet toReal(Packet packet, CoordinateTransform origin) {
+        if (packet instanceof ServerboundMoveVehiclePacket vehiclePacket) {
+            Vector3d position = vehiclePacket.getPosition();
+            return vehiclePacket.withPosition(Vector3d.from(
+                    origin.toRealX(position.getX()), position.getY(), origin.toRealZ(position.getZ())
+            ));
+        }
+        if (packet instanceof ServerboundUseItemOnPacket useItemPacket) {
+            return useItemPacket.withPosition(toRealBlockPosition(useItemPacket.getPosition(), origin));
+        }
+        if (packet instanceof ServerboundPlayerActionPacket actionPacket) {
+            return actionPacket.withPosition(toRealBlockPosition(actionPacket.getPosition(), origin));
+        }
+        if (packet instanceof ServerboundSetCommandBlockPacket commandBlockPacket) {
+            return commandBlockPacket.withPosition(toRealBlockPosition(commandBlockPacket.getPosition(), origin));
+        }
+        if (packet instanceof ServerboundSetJigsawBlockPacket jigsawBlockPacket) {
+            return jigsawBlockPacket.withPosition(toRealBlockPosition(jigsawBlockPacket.getPosition(), origin));
+        }
+        if (packet instanceof ServerboundSignUpdatePacket signUpdatePacket) {
+            return signUpdatePacket.withPosition(toRealBlockPosition(signUpdatePacket.getPosition(), origin));
+        }
         if (packet instanceof ServerboundAcceptTeleportationPacket teleportPacket) {
             return teleportPacket
                     .withX(origin.toRealX(teleportPacket.getX()))
@@ -78,5 +106,13 @@ public final class PlayerMovementPacketTransform {
                     .withZ(origin.toRealZ(positionRotationPacket.getZ()));
         }
         return packet;
+    }
+
+    private static Vector3i toRealBlockPosition(Vector3i localPosition, CoordinateTransform origin) {
+        return Vector3i.from(
+                origin.toRealBlockX(localPosition.getX()),
+                localPosition.getY(),
+                origin.toRealBlockZ(localPosition.getZ())
+        );
     }
 }
