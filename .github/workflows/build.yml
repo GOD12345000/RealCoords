@@ -147,3 +147,5 @@ jobs:
           path: RealCoords/build/libs/*.jar
           if-no-files-found: error
           retention-days: 14
+
+# Source migration runs once when the legacy archive exists; later builds use RealCoords/ directly.
