@@ -3,7 +3,7 @@ package dev.realcoords;
 import org.cloudburstmc.math.vector.Vector3d;
 import org.cloudburstmc.math.vector.Vector3i;
 import org.geysermc.mcprotocollib.protocol.data.game.level.block.BlockChangeEntry;
-import org.geysermc.mcprotocollib.network.packet.Packet;
+import org.geysermc.mcprotocollib.protocol.codec.MinecraftPacket;
 import org.geysermc.mcprotocollib.protocol.data.game.entity.player.PositionElement;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.player.ClientboundPlayerPositionPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundAddEntityPacket;
@@ -57,7 +57,7 @@ public final class PlayerMovementPacketTransform {
      * Convert Java-server positions into Geyser's local coordinate space.
      * Relative X/Z components are deltas and must remain unchanged.
      */
-    public static Packet toLocal(Packet packet, CoordinateTransform origin) {
+    public static MinecraftPacket toLocal(MinecraftPacket packet, CoordinateTransform origin) {
         if (packet instanceof ClientboundEntityPositionSyncPacket syncPacket) {
             if (syncPacket.isStepped()) {
                 java.util.List<ClientboundEntityPositionSyncPacket.PositionStep> localSteps = syncPacket.getSteps().stream()
@@ -174,7 +174,7 @@ public final class PlayerMovementPacketTransform {
      * Restore Geyser-local absolute positions before they reach the Java server.
      * Movement deltas, rotation-only packets, and status-only packets are untouched.
      */
-    public static Packet toReal(Packet packet, CoordinateTransform origin) {
+    public static MinecraftPacket toReal(MinecraftPacket packet, CoordinateTransform origin) {
         if (packet instanceof ServerboundMoveVehiclePacket vehiclePacket) {
             Vector3d position = vehiclePacket.getPosition();
             return vehiclePacket.withPosition(Vector3d.from(
