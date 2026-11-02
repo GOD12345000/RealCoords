@@ -2,7 +2,7 @@ name: Build RealCoords
 
 on:
   push:
-    branches: [main]
+    branches: [main, feature/coordinate-origin-rebasing]
     paths:
       - "RealCoords/**"
       - ".github/workflows/build.yml"
