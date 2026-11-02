@@ -1,0 +1,48 @@
+name: Build RealCoords
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "RealCoords-source.zip"
+      - ".github/workflows/build.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.10.2"
+
+      - name: Extract source
+        run: |
+          test -f RealCoords-source.zip
+          unzip -q RealCoords-source.zip -d .
+          test -f RealCoords/build.gradle.kts
+
+      - name: Build
+        working-directory: RealCoords
+        run: gradle --no-daemon -PgeyserVersion=2.12.1-SNAPSHOT -PjavaVersion=21 clean build
+
+      - name: Upload JAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: RealCoords-JAR
+          path: RealCoords/build/libs/*.jar
+          if-no-files-found: error
+          retention-days: 14
