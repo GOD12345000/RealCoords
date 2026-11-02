@@ -6,6 +6,7 @@ import org.geysermc.mcprotocollib.protocol.data.game.entity.player.PositionEleme
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.player.ClientboundPlayerPositionPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundMovePlayerPosPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundMovePlayerPosRotPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.level.ServerboundAcceptTeleportationPacket;
 
 /**
  * Pure player-position packet transformations for one immutable origin.
@@ -43,6 +44,11 @@ public final class PlayerMovementPacketTransform {
      * Movement deltas, rotation-only packets, and status-only packets are untouched.
      */
     public static Packet toReal(Packet packet, CoordinateTransform origin) {
+        if (packet instanceof ServerboundAcceptTeleportationPacket teleportPacket) {
+            return teleportPacket
+                    .withX(origin.toRealX(teleportPacket.getX()))
+                    .withZ(origin.toRealZ(teleportPacket.getZ()));
+        }
         if (packet instanceof ServerboundMovePlayerPosPacket positionPacket) {
             return positionPacket
                     .withX(origin.toRealX(positionPacket.getX()))
