@@ -10,9 +10,9 @@ class CoordinateTransformTest {
         CoordinateTransform transform = new CoordinateTransform(1024, -512);
 
         assertEquals(976.5, transform.toBedrockX(2000.5), 0.0001);
-        assertEquals(-487.25, transform.toBedrockZ(24.75), 0.0001);
+        assertEquals(536.75, transform.toBedrockZ(24.75), 0.0001);
         assertEquals(2000.5, transform.toJavaX(976.5), 0.0001);
-        assertEquals(24.75, transform.toJavaZ(-487.25), 0.0001);
+        assertEquals(24.75, transform.toJavaZ(536.75), 0.0001);
     }
 
     @Test
