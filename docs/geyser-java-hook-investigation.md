@@ -1,6 +1,6 @@
 # Geyser Java Packet Hook Investigation
 
-Status: source investigation only. No Java packet hook is installed by this document.
+Historical source investigation. The proposed Geyser API patch below is superseded for the current branch by the standalone startup-agent design in [startup-agent.md](startup-agent.md). This file is retained as research history; it is not the current deployment procedure.
 
 ## Exact target build
 
@@ -158,9 +158,9 @@ But the public `SessionLoginEvent` fires before step 1. An extension cannot obta
 
 A late `ConnectedEvent` listener does not solve this: it must already be registered to receive the event. Registering it after the channel has become active is too late to guarantee that the handshake has not already started.
 
-### Recommended deterministic integration point
+### Historical recommended integration point (superseded)
 
-The clean solution is a small Geyser API/source addition, not a polling race:
+At the time of this investigation, the cleanest known option was a small Geyser API/source addition, not a polling race. The current branch instead uses a version-pinned startup agent so the official Geyser JAR remains unchanged:
 
 - Add a downstream-initialization event in `GeyserSession.connectDownstream()`.
 - Fire it after `ClientListener` is registered and before `GeyserSessionAdapter` is registered (or expose an explicit ordered listener-registration API at this point).
@@ -177,4 +177,4 @@ The event should be documented as an internal/downstream lifecycle hook and shou
 
 Do not implement a tick-loop polling installer as if it were guaranteed. Do not use `SessionJoinEvent`. Do not mutate MCProtocolLib's private listener list reflectively.
 
-The next implementation step is to write and review the Geyser API/SPI proposal, then build and integration-test the hook against both TCP and LocalSession before implementing packet transformations. Until that hook exists (or an equivalent deterministic mechanism is proven), packet transformation remains intentionally unwired.
+The current implementation step is to build and runtime-test the startup agent against the exact Geyser 2.12.1 build, including both TCP and LocalSession, before implementing packet transformations. Until that hook exists (or an equivalent deterministic mechanism is proven), packet transformation remains intentionally unwired.
