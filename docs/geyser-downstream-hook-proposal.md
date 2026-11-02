@@ -30,9 +30,9 @@ import org.geysermc.mcprotocollib.network.ClientSession;
 import java.util.Objects;
 
 /**
- * Called after Geyser has created the Java downstream session and registered
- * MCProtocolLib's protocol listener, but before Geyser registers its packet
- * translator and before the downstream connection is started.
+ * Called after Geyser has created and configured the Java downstream session,
+ * but before Geyser registers its protocol listener or packet translator,
+ * and before the downstream connection starts.
  *
  * This event is intended for extensions that must install an ordered
  * downstream packet listener before any Java connection traffic is processed.
