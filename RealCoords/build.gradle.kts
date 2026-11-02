@@ -10,14 +10,19 @@ val geyserVersion: String by project
 val javaVersion: String by project
 
 repositories {
+    // Allows building against a locally patched Geyser API/core installed with publishToMavenLocal.
+    mavenLocal()
     mavenCentral()
     maven("https://repo.opencollab.dev/main/")
+    maven("https://repo.opencollab.dev/maven-snapshots/")
 }
 
 dependencies {
     // Geyser 與 Cloudburst Protocol / Netty / NBT 由 Geyser 在執行時提供
     compileOnly("org.geysermc.geyser:api:$geyserVersion")
     compileOnly("org.geysermc.geyser:core:$geyserVersion")
+    // Public types exposed by the patched DownstreamSessionInitializeEvent and packet hook.
+    compileOnly("org.geysermc.mcprotocollib:protocol:26.3")
     implementation("org.yaml:snakeyaml:2.2")
 
     testImplementation("org.junit.jupiter:junit-jupiter:5.11.4")
