@@ -225,11 +225,18 @@ class PlayerMovementPacketTransformTest {
     }
 
     @Test
-    void leavesUnrelatedAndRelativeMovementPacketsUntouched() {
+    void restoresAbsoluteMovementCoordinatesAndLeavesInboundDirectionUntouched() {
         ServerboundMovePlayerPosPacket input =
                 new ServerboundMovePlayerPosPacket(true, true, 1, 2, 3);
 
-        assertSame(input, PlayerMovementPacketTransform.toReal(input, ORIGIN));
+        ServerboundMovePlayerPosPacket real =
+                (ServerboundMovePlayerPosPacket) PlayerMovementPacketTransform.toReal(input, ORIGIN);
+        assertEquals(25_000_001, real.getX());
+        assertEquals(2, real.getY());
+        assertEquals(-16_999_997, real.getZ());
+        assertTrue(real.isOnGround());
+        assertTrue(real.isHorizontalCollision());
+
         assertSame(input, PlayerMovementPacketTransform.toLocal(input, ORIGIN));
     }
 }
