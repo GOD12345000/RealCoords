@@ -403,6 +403,36 @@ final class ShiftSession {
     private void onAuthInput(PlayerAuthInputPacket a) {
         Vector3f pos = a.getPosition();
         if (pos == null) return;
+
+        // A backend switch can leave the Bedrock client briefly reporting the old
+        // absolute Java coordinates even though this session has already selected a
+        // floating origin. Normalize that packet BEFORE adding the origin below.
+        ShiftConfig.Dim activeDim = dimCfg();
+        boolean looksAbsolute = Math.abs(pos.getX()) > activeDim.trigger
+                || Math.abs(pos.getZ()) > activeDim.trigger;
+        if (looksAbsolute) {
+            if (offX == 0 && offZ == 0) {
+                int nx = nextOff(0, pos.getX(), activeDim);
+                int nz = nextOff(0, pos.getZ(), activeDim);
+                if (nx != 0 || nz != 0) {
+                    offX = nx;
+                    offZ = nz;
+                    log.warning(String.format(
+                            "[RealCoords] %s: recovered origin from absolute Bedrock input -> (%d,%d)",
+                            name(), offX, offZ));
+                }
+            }
+            if (offX != 0 || offZ != 0) {
+                Vector3f before = pos;
+                pos = toB(pos);
+                a.setPosition(pos);
+                warnRate("absolute-auth-input",
+                        String.format("[RealCoords] %s: normalized absolute AuthInput (%.3f, %.3f) -> local (%.3f, %.3f), origin=(%d,%d)",
+                                name(), before.getX(), before.getZ(), pos.getX(), pos.getZ(), offX, offZ),
+                        3000);
+            }
+        }
+
         if (!hookIn) {
             hookIn = true;
             log.info("[RealCoords] hook active: " + name());
