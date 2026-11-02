@@ -30,16 +30,39 @@ public record CoordinateTransform(int originX, int originZ) {
         return realX - (double) originX;
     }
 
+    /**
+     * Localize an X component only when it represents an absolute position.
+     * Relative-axis components are deltas and must pass through unchanged.
+     */
+    public double toLocalX(double x, boolean relative) {
+        return relative ? x : toLocalX(x);
+    }
+
     public double toLocalZ(double realZ) {
         return realZ - (double) originZ;
+    }
+
+    /** See {@link #toLocalX(double, boolean)}. */
+    public double toLocalZ(double z, boolean relative) {
+        return relative ? z : toLocalZ(z);
     }
 
     public double toRealX(double localX) {
         return localX + (double) originX;
     }
 
+    /** Restore the origin only for absolute X components, never for deltas. */
+    public double toRealX(double x, boolean relative) {
+        return relative ? x : toRealX(x);
+    }
+
     public double toRealZ(double localZ) {
         return localZ + (double) originZ;
+    }
+
+    /** Restore the origin only for absolute Z components, never for deltas. */
+    public double toRealZ(double z, boolean relative) {
+        return relative ? z : toRealZ(z);
     }
 
     public int toLocalBlockX(int realX) {
