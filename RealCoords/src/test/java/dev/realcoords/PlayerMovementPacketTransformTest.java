@@ -1,8 +1,12 @@
 package dev.realcoords;
 
 import org.cloudburstmc.math.vector.Vector3d;
+import org.cloudburstmc.math.vector.Vector3i;
 import org.geysermc.mcprotocollib.network.packet.Packet;
 import org.geysermc.mcprotocollib.protocol.data.game.entity.player.PositionElement;
+import org.geysermc.mcprotocollib.protocol.data.game.entity.player.PlayerAction;
+import org.geysermc.mcprotocollib.protocol.data.game.entity.player.Hand;
+import org.geysermc.mcprotocollib.protocol.data.game.entity.object.Direction;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.player.ClientboundPlayerPositionPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundAddEntityPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundTeleportEntityPacket;
@@ -10,6 +14,9 @@ import org.geysermc.mcprotocollib.protocol.data.game.entity.type.EntityType;
 import java.util.UUID;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundMovePlayerPosPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.level.ServerboundAcceptTeleportationPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.level.ServerboundMoveVehiclePacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundPlayerActionPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundUseItemOnPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundMovePlayerPosRotPacket;
 import org.junit.jupiter.api.Test;
 
@@ -122,6 +129,41 @@ class PlayerMovementPacketTransformTest {
         assertEquals(-20, result.getPitch());
         assertFalse(result.isOnGround());
         assertTrue(result.isHorizontalCollision());
+    }
+
+    @Test
+    void restoresVehicleAbsolutePositionForJava() {
+        ServerboundMoveVehiclePacket input = new ServerboundMoveVehiclePacket(
+                Vector3d.from(2.5, 70, -3.5), 90, 10, true
+        );
+
+        ServerboundMoveVehiclePacket result = (ServerboundMoveVehiclePacket)
+                PlayerMovementPacketTransform.toReal(input, ORIGIN);
+
+        assertEquals(25_000_002.5, result.getPosition().getX());
+        assertEquals(70, result.getPosition().getY());
+        assertEquals(-17_000_003.5, result.getPosition().getZ());
+        assertEquals(input.getYRot(), result.getYRot());
+        assertEquals(input.getXRot(), result.getXRot());
+        assertTrue(result.isOnGround());
+    }
+
+    @Test
+    void restoresBlockInteractionCoordinatesForJava() {
+        ServerboundUseItemOnPacket useItem = new ServerboundUseItemOnPacket(
+                Vector3i.from(12, 64, -8), Direction.UP, Hand.MAIN_HAND,
+                0.5f, 1.0f, 0.25f, false, false, 3
+        );
+        ServerboundUseItemOnPacket realUseItem = (ServerboundUseItemOnPacket)
+                PlayerMovementPacketTransform.toReal(useItem, ORIGIN);
+        assertEquals(Vector3i.from(25_000_012, 64, -17_000_008), realUseItem.getPosition());
+
+        ServerboundPlayerActionPacket action = new ServerboundPlayerActionPacket(
+                PlayerAction.START_DIGGING, Vector3i.from(-2, 70, 4), Direction.NORTH, 5
+        );
+        ServerboundPlayerActionPacket realAction = (ServerboundPlayerActionPacket)
+                PlayerMovementPacketTransform.toReal(action, ORIGIN);
+        assertEquals(Vector3i.from(24_999_998, 70, -16_999_996), realAction.getPosition());
     }
 
     @Test
