@@ -11,7 +11,7 @@ val javaVersion: String by project
 
 repositories {
     mavenCentral()
-    maven('https://repo.opencollab.dev/main/')
+    maven("https://repo.opencollab.dev/main/")
 }
 
 dependencies {
