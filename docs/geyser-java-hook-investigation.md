@@ -105,3 +105,52 @@ We must verify whether the adapter can always be registered before `ConnectedEve
 ## Current implementation on the branch
 
 The branch has a standalone immutable `CoordinateTransform` model and JUnit 5 tests for double-precision localization, round-trip behavior, integer block/chunk translation, alignment validation, and overflow. The model is not yet wired into packet processing.
+
+
+## Final conclusion from the exact MCProtocolLib 26.3 source
+
+### What the channel lifecycle guarantees
+
+`ClientNetworkSession.connect(false)` starts an asynchronous Netty Bootstrap connection. In `MinecraftChannelInitializer`, MCProtocolLib installs the packet codec and then the `NetworkSession` handler.
+
+When the channel becomes active, `NetworkSession.channelActive()`:
+
+1. stores the channel;
+2. synchronously fires `ConnectedEvent` to its current listener list;
+3. only after all ConnectedEvent listeners return, flushes queued outbound packets.
+
+This gives a useful deterministic hook point: a listener that was registered before `connect(false)` can install a duplex handler in its `connected(ConnectedEvent)` callback. The channel is initialized, the `NetworkSession` is in the pipeline, and the initial queued handshake has not yet been flushed. The handler can be inserted immediately before the `NetworkSession` handler, so inbound decoded packets are intercepted before listener dispatch and outbound packets are intercepted before serialization.
+
+### Why the extension API still cannot guarantee it
+
+Geyser's current ordering in `connectDownstream()` is:
+
+1. construct downstream;
+2. register `ClientListener`;
+3. register `GeyserSessionAdapter`;
+4. call `downstream.connect(false)`.
+
+But the public `SessionLoginEvent` fires before step 1. An extension cannot obtain the downstream session from that event. A task scheduled onto the Geyser tick EventLoop may eventually see it, but `ClientNetworkSession` connects on its own static Netty EventLoopGroup. There is no source-level happens-before guarantee that a scheduled extension task runs before `ConnectedEvent`. The direct-auth, asynchronous-auth-chain, and Microsoft-auth completion paths also call `connectDownstream()` from different caller contexts.
+
+A late `ConnectedEvent` listener does not solve this: it must already be registered to receive the event. Registering it after the channel has become active is too late to guarantee that the handshake has not already started.
+
+### Recommended deterministic integration point
+
+The clean solution is a small Geyser API/source addition, not a polling race:
+
+- Add a downstream-initialization event in `GeyserSession.connectDownstream()`.
+- Fire it after `ClientListener` is registered and before `GeyserSessionAdapter` is registered (or expose an explicit ordered listener-registration API at this point).
+- Expose the MCProtocolLib `ClientSession` through the event.
+- Let RealCoords register its own `SessionAdapter` during this callback.
+- In RealCoords' `connected(ConnectedEvent)`, insert the Netty duplex handler immediately before the `NetworkSession` handler.
+- Fail closed if the expected handler is missing or the event occurs after connection activation.
+
+This gives the listener a deterministic position between `ClientListener` and `GeyserSessionAdapter`, and a deterministic opportunity to install the Netty handler before queued login traffic is flushed.
+
+The event should be documented as an internal/downstream lifecycle hook and should not expose implementation classes unnecessarily if Geyser prefers a stable API abstraction. For a narrow initial implementation, an API event exposing the MCProtocolLib `ClientSession` is the simplest workable option.
+
+### Decision
+
+Do not implement a tick-loop polling installer as if it were guaranteed. Do not use `SessionJoinEvent`. Do not mutate MCProtocolLib's private listener list reflectively.
+
+The next implementation step should be to prepare a minimal Geyser patch/API proposal for the pre-connect downstream initialization event, then build RealCoords against that hook. Until that hook exists (or an equivalent deterministic mechanism is proven), packet transformation remains intentionally unwired.
