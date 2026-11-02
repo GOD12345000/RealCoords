@@ -13,6 +13,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: validate-geyser-hook-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   validate-patch-and-extension:
     runs-on: ubuntu-latest
