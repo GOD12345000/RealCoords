@@ -1,5 +1,7 @@
 package dev.realcoords;
 
+import io.netty.channel.embedded.EmbeddedChannel;
+import org.geysermc.mcprotocollib.network.packet.Packet;
 import org.geysermc.mcprotocollib.protocol.data.game.entity.player.PositionElement;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.player.ClientboundPlayerPositionPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundLevelChunkWithLightPacket;
@@ -17,6 +19,42 @@ class JavaPacketTransformTest {
         ShiftConfig config = new ShiftConfig();
         config.dims.put(0, new ShiftConfig.Dim());
         return new JavaPacketTransform(config);
+    }
+
+    @Test
+    void embeddedChannelReplacesClientboundPacketAndRestoresServerboundMovement() {
+        ShiftConfig config = new ShiftConfig();
+        config.dims.put(0, new ShiftConfig.Dim());
+        JavaPacketTransform transform = new JavaPacketTransform(config);
+        EmbeddedChannel channel = new EmbeddedChannel(
+                new JavaSessionHook.JavaPacketTransformHandler(transform, null));
+
+        ClientboundPlayerPositionPacket initial = new ClientboundPlayerPositionPacket(
+                1, 23_000_000, 70, -17_000_000, 0, 0, 0, 0, 0);
+        assertTrue(channel.writeInbound(initial));
+        ClientboundPlayerPositionPacket local = channel.readInbound();
+        assertNotSame(initial, local);
+        assertTrue(Math.abs(local.getPosition().getX()) < 256);
+        assertTrue(Math.abs(local.getPosition().getZ()) < 256);
+
+        ServerboundMovePlayerPosPacket outgoing = new ServerboundMovePlayerPosPacket(
+                true, false, local.getPosition().getX() + 1, 70, local.getPosition().getZ() + 1);
+        assertTrue(channel.writeOutbound(outgoing));
+        ServerboundMovePlayerPosPacket restored = channel.readOutbound();
+        assertEquals(23_000_001, restored.getX());
+        assertEquals(-16_999_999, restored.getZ());
+        channel.finishAndReleaseAll();
+    }
+
+    @Test
+    void embeddedChannelPassesNonPacketMessagesUnchanged() {
+        EmbeddedChannel channel = new EmbeddedChannel(
+                new JavaSessionHook.JavaPacketTransformHandler(transformer(), null));
+        Object message = new Object();
+
+        assertTrue(channel.writeInbound(message));
+        assertSame(message, channel.readInbound());
+        channel.finishAndReleaseAll();
     }
 
     @Test
