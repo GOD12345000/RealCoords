@@ -1,6 +1,6 @@
 # Phase 2: live re-origin and Geyser state replay design
 
-Status: partial implementation. Packet snapshotting, bounded chunk/update capture, packet reconstruction, replay dispatch, paired temporary/restore respawn packet construction, and a timeout-bounded acknowledgement gate for the two-respawn sequence are implemented. The reset injection helper is available, but automatic reset orchestration and continuous live re-origin remain disabled.
+Status: transaction orchestration is implemented behind the opt-in `origin-shift.shift-while-moving: false` setting. With a warm chunk cache, continuous player/vehicle movement can request an aligned origin change; the hook drops that movement packet, performs the paired synthetic respawn and local teleport, waits for the scoped Java acknowledgements, replays immutable chunk/entity/global snapshots in scheduled batches, drains buffered live world updates, and only then resumes movement. The feature remains off by default pending Bedrock dimension-acknowledgement review and in-game acceptance.
 
 ## Verified Geyser reset behavior
 
@@ -50,7 +50,7 @@ The following state must be captured or explicitly proven to be re-sent after a 
 
 ## Re-origin transaction
 
-The transaction is intentionally not enabled until every stage is testable:
+The live transaction now follows these stages when the opt-in setting is enabled:
 
 1. Freeze and drop only Java-bound player/vehicle movement packets; keep keep-alive, chat and unrelated control packets flowing.
 2. Choose the new aligned origin from the latest accepted real position.
@@ -59,7 +59,7 @@ The transaction is intentionally not enabled until every stage is testable:
 5. Replay nearby chunks nearest-first in bounded batches; apply block overlays after each chunk.
 6. Replay entities in dependency-safe order (spawn, metadata/attributes/equipment/effects, links/passengers, final position).
 7. Restore global state and wait for the Bedrock player to acknowledge/reach the new local position.
-8. Unfreeze movement only after replay completion or abort safely and restore the previous origin.
+8. Unfreeze movement only after replay completion; any timeout, buffer overflow, or replay failure closes the downstream session.
 
 ## Current implementation boundary
 
@@ -68,15 +68,15 @@ The transaction is intentionally not enabled until every stage is testable:
 - `EntityReplayCache` keeps a separately bounded per-session entity snapshot budget (up to 512 entities and one quarter of the configured chunk byte budget, with a 1 MiB floor). It captures spawn, metadata, attributes, equipment, effects, motion, absolute position sync, links and passengers; entity/effect removals clear stale entries. Replay is nearest-first and sends all selected spawns before dependent state packets.
 - `syntheticResetRespawns` builds a temporary-world-name respawn followed by the original-world-name respawn, preserving the current dimension and shifted death marker. The hook can inject both packets directly into Geyser's inbound pipeline, bypassing the normal transform/cache capture path.
 - `GlobalStateReplayCache` retains bounded latest snapshots for time, difficulty, game mode/weather notifications, default spawn and world-border state. Its replay path preserves last-update order and runs each packet through the normal coordinate transform.
-- `ReoriginReplayPlan` takes immutable chunk/entity/global snapshots and exposes a forward-only staged cursor: chunks first in bounded pages, then entity packets in bounded pages, then global state. This prevents the replay source from being reordered by cache updates that arrive after the snapshot. The hook exposes event-loop-only dispatch methods for each stage.
+- `ReoriginReplayPlan` takes immutable chunk/entity/global snapshots and exposes a forward-only staged cursor: chunks first in bounded pages, then entity packets in bounded pages, then global state, and finally buffered live updates. This prevents the replay source from being reordered by cache updates that arrive after the snapshot. The hook schedules each stage on the downstream channel event loop.
 - `LiveUpdateBuffer` is wired into the Java hook while a replay plan is active: selected live world/entity/scoreboard packets are withheld, snapshotted in FIFO order, and drained after global-state replay. Overflow or an unencodable packet aborts the plan and closes the downstream session rather than silently losing world state.
-- The chunk, entity and global-state caches warm from the beginning of the Java session and retain recent state under per-player bounds. `JavaPacketTransform.replayCachedChunks` reconstructs a bounded nearest-first batch using the MCProtocolLib packet codecs, transforms it into current local coordinates, and appends captured overlays after each base chunk. `JavaSessionHook` can inject such a batch into Geyser's inbound pipeline on the downstream channel event loop. This dispatch is not yet called by a reset transaction.
+- The chunk, entity and global-state caches warm from the beginning of the Java session and retain recent state under per-player bounds. Replay snapshots include only chunks within the active view radius plus the configured eviction margin. `JavaPacketTransform` reconstructs bounded nearest-first batches using MCProtocolLib packet codecs, transforms them into current local coordinates, and appends captured overlays after each base chunk.
 - Chunk byte accounting counts stored compressed/uncompressed payload arrays. Overlay accounting adds payload bytes plus a fixed per-entry estimate. This is a bounded accounting budget, not an exact JVM heap measurement.
 
 ## Safety gates before enabling
 
-- No chunk or entity replay until bounded memory accounting and eviction tests pass.
-- The acknowledgement gate suppresses the two expected `ServerboundPlayerLoadedPacket` responses and the exact reserved teleport ID. If the reset is aborted or times out after injection, the downstream channel is closed rather than allowing late synthetic acknowledgements to leak to the real server. EmbeddedChannel tests cover unrelated acknowledgements, normal packets, injection order, and fail-closed abort. End-to-end synthetic reset sequencing, automatic reset/replay orchestration, abort policy for all transaction stages, and movement freeze/unfreeze orchestration are still required before use.
-- No movement unfreeze while a replay batch is incomplete.
-- Any timeout, disconnect, missing acknowledgement, or replay overflow aborts the transaction without forwarding synthetic packets to the backend.
-- origin-shift.shift-while-moving remains false by default until full CI coverage and manual acceptance are available.
+- Bounded memory accounting, eviction, snapshot ordering, replay pagination and live-update buffering have automated unit coverage. Full Bedrock client/server integration remains unverified.
+- The acknowledgement gate suppresses the two expected `ServerboundPlayerLoadedPacket` responses and the exact reserved teleport ID. If the reset is aborted or times out after injection, the downstream channel is closed rather than allowing late synthetic acknowledgements to leak to the real server. EmbeddedChannel tests cover unrelated acknowledgements, normal packets, injection order, and fail-closed abort. The separate Bedrock dimension-transition acknowledgement is still not observed by this hook and must be validated against the pinned Geyser Bedrock translator before treating the transaction as production-ready.
+- Player and vehicle movement is withheld during the synthetic reset and all replay stages; it resumes only after the live-update buffer is drained.
+- Synthetic-ack timeout, replay timeout, disconnect, missing acknowledgement, replay exception, or live-update buffer overflow closes the downstream session rather than forwarding synthetic acknowledgements or leaving a partially restored world.
+- `origin-shift.shift-while-moving` remains false by default. Enable it only after the latest CI run passes and the synthetic dimension reset is accepted in a real Bedrock session.
