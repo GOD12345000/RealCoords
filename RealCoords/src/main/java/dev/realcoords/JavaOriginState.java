@@ -48,23 +48,30 @@ final class JavaOriginState {
      * distance. Ordinary movement never changes the origin in phase 1.
      */
     Snapshot absolutePosition(double x, double z, int viewDistanceChunks) {
+        return absolutePosition(x, z, viewDistanceChunks, true, true);
+    }
+
+    Snapshot absolutePosition(double x, double z, int viewDistanceChunks,
+                              boolean absoluteX, boolean absoluteZ) {
         int oldX = offsetX;
         int oldZ = offsetZ;
+        double nextX = absoluteX ? x : (hasPosition ? lastX + x : x);
+        double nextZ = absoluteZ ? z : (hasPosition ? lastZ + z : z);
 
         if (resetPending || !hasPosition) {
-            offsetX = candidateOffset(x, offsetX);
-            offsetZ = candidateOffset(z, offsetZ);
+            if (absoluteX) offsetX = candidateOffset(nextX, offsetX);
+            if (absoluteZ) offsetZ = candidateOffset(nextZ, offsetZ);
             resetPending = false;
-        } else {
+        } else if (absoluteX && absoluteZ) {
             double viewDistance = Math.max(0, viewDistanceChunks) * 16.0;
-            if (Math.hypot(x - lastX, z - lastZ) > viewDistance) {
-                offsetX = nextOffset(offsetX, x);
-                offsetZ = nextOffset(offsetZ, z);
+            if (Math.hypot(nextX - lastX, nextZ - lastZ) > viewDistance) {
+                offsetX = nextOffset(offsetX, nextX);
+                offsetZ = nextOffset(offsetZ, nextZ);
             }
         }
 
-        lastX = x;
-        lastZ = z;
+        lastX = nextX;
+        lastZ = nextZ;
         hasPosition = true;
         publishOffsets();
         return new Snapshot(offsetX, offsetZ, oldX != offsetX || oldZ != offsetZ, true);
