@@ -155,23 +155,25 @@ plugins/Geyser-Velocity/extensions/realcoords/config.yml
 | alignment | 256 | X/Z 偏移量的對齊間隔（格） |
 | trigger-distance | 50000 | 主世界／未覆寫維度的觸發距離（格） |
 | reset-distance | 20000 | 已偏移後，允許重設偏移的距離（格） |
-| cooldown-ticks | 100 | 兩次偏移操作之間的冷卻時間 |
-| ack-timeout-ticks | 60 | 等待客戶端位置確認的逾時時間 |
-| ack-tolerance | 4.0 | 確認位置時容許的誤差 |
+| cooldown-ticks | 100 | 舊 Bedrock 模式兩次偏移操作之間的冷卻時間 |
+| ack-timeout-ticks | 60 | 舊 Bedrock 模式等待客戶端位置確認的逾時時間 |
+| ack-tolerance | 4.0 | 舊 Bedrock 模式確認位置時容許的誤差 |
 | dimensions.*.enabled | true | 個別維度是否啟用 |
 | 地獄覆寫 | 6000 / 2500 / 128 | 依序為觸發距離、重設距離、對齊間隔 |
 
-Minecraft 正常 tick rate 約為每秒 20 ticks；例如 100 ticks 約為 5 秒。觸發與重設距離形成遲滯區間，避免玩家在同一門檻附近反覆切換。
+Minecraft 正常 tick rate 約為每秒 20 ticks；例如 100 ticks 約為 5 秒。觸發與重設距離形成遲滯區間，避免玩家在同一門檻附近反覆切換。Java 模式階段 1 不使用 `cooldown-ticks`、`ack-timeout-ticks` 與 `ack-tolerance`；這三項保留給舊 Bedrock 模式。
 
 ### safety：位置安全檢查
 
 | 參數 | 目前預設值 | 說明 |
 |---|---:|---|
 | max-serverbound-jump | 64.0 | 對送往伺服器的位置跳躍進行限制檢查 |
-| correction-interval-ticks | 10 | 位置修正檢查間隔 |
+| correction-interval-ticks | 10 | 舊 Bedrock 模式補送位置修正封包的最短間隔 |
 | debug-log | false | 是否輸出額外除錯資訊 |
 
 ### chunk-cache：區塊快取
+
+這組快取／重送設定只供 `layer: bedrock` 的舊模式使用；Java 模式階段 1 依賴伺服器原本的世界重載，不重放區塊。
 
 | 參數 | 目前預設值 | 說明 |
 |---|---:|---|
