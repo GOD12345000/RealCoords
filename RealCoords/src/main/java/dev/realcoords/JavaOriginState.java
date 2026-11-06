@@ -25,6 +25,8 @@ final class JavaOriginState {
     private double lastZ;
     private boolean hasPosition;
     private boolean resetPending = true;
+    private boolean needsAbsoluteX = true;
+    private boolean needsAbsoluteZ = true;
 
     JavaOriginState(ShiftConfig config) {
         this.config = config;
@@ -37,6 +39,8 @@ final class JavaOriginState {
         offsetZ = 0;
         hasPosition = false;
         resetPending = true;
+        needsAbsoluteX = true;
+        needsAbsoluteZ = true;
         publishOffsets();
     }
 
@@ -49,6 +53,8 @@ final class JavaOriginState {
         publishOffsets();
         hasPosition = false;
         resetPending = true;
+        needsAbsoluteX = true;
+        needsAbsoluteZ = true;
     }
 
     /**
@@ -68,9 +74,15 @@ final class JavaOriginState {
         double nextZ = absoluteZ ? z : (hasPosition ? lastZ + z : z);
 
         if (resetPending || !hasPosition) {
-            if (absoluteX) offsetX = candidateOffset(nextX, offsetX);
-            if (absoluteZ) offsetZ = candidateOffset(nextZ, offsetZ);
-            if (absoluteX && absoluteZ) resetPending = false;
+            if (needsAbsoluteX && absoluteX) {
+                offsetX = candidateOffset(nextX, offsetX);
+                needsAbsoluteX = false;
+            }
+            if (needsAbsoluteZ && absoluteZ) {
+                offsetZ = candidateOffset(nextZ, offsetZ);
+                needsAbsoluteZ = false;
+            }
+            resetPending = needsAbsoluteX || needsAbsoluteZ;
         } else if (absoluteX && absoluteZ) {
             double viewDistance = Math.max(0, viewDistanceChunks) * 16.0;
             if (Math.hypot(nextX - lastX, nextZ - lastZ) > viewDistance) {
