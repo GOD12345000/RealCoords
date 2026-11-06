@@ -5,13 +5,15 @@ origin-shift:
   enabled: true
   # java：在 Geyser 轉成 float 前轉換；bedrock：舊版相容模式
   layer: java
+  # Java 模式連續移動／飛行時是否自動重設浮動原點；預設關閉，完成遊戲內驗證後再開啟
+  shift-while-moving: false
   # 偏移量的對齊單位，必須是 16 的倍數（會自動修正）
   alignment: 256
   # 真實 X/Z 座標超過此值時，登入／重生／遠距傳送會選擇靠近玩家的新原點
   trigger-distance: 50000
   # 真實座標回到此範圍內（且目前有偏移）才歸零。必須小於 trigger-distance（遲滯）
   reset-distance: 20000
-  # bedrock 模式兩次換原點的最短間隔（Java 階段 1 只在世界重載時換原點）
+  # bedrock 模式兩次換原點的最短間隔；Java 連續移動模式也會使用此冷卻時間
   cooldown-ticks: 100
   # bedrock 模式換原點／伺服器傳送後，等待客戶端到位的最長時間
   ack-timeout-ticks: 60
