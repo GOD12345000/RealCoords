@@ -90,6 +90,24 @@ class JavaPacketTransformTest {
     }
 
     @Test
+    void cachedGlobalWeatherEventsReplayInLastUpdateOrder() {
+        JavaPacketTransform transform = transformer();
+        transform.clientbound(new ClientboundGameEventPacket(
+                org.geysermc.mcprotocollib.protocol.data.game.level.notify.GameEvent.START_RAINING, null));
+        transform.clientbound(new ClientboundGameEventPacket(
+                org.geysermc.mcprotocollib.protocol.data.game.level.notify.GameEvent.STOP_RAINING, null));
+
+        List<Packet> replay = transform.replayGlobalState();
+        assertEquals(2, replay.size());
+        ClientboundGameEventPacket start = assertInstanceOf(ClientboundGameEventPacket.class, replay.get(0));
+        ClientboundGameEventPacket stop = assertInstanceOf(ClientboundGameEventPacket.class, replay.get(1));
+        assertEquals(org.geysermc.mcprotocollib.protocol.data.game.level.notify.GameEvent.START_RAINING,
+                start.getNotification());
+        assertEquals(org.geysermc.mcprotocollib.protocol.data.game.level.notify.GameEvent.STOP_RAINING,
+                stop.getNotification());
+    }
+
+    @Test
     void cachedEntityReplaySendsSpawnBeforeMetadataAndShiftsSpawnPosition() {
         ShiftConfig config = new ShiftConfig();
         config.dims.put(0, new ShiftConfig.Dim());
