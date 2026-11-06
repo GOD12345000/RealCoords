@@ -50,7 +50,7 @@ final class LiveUpdateBuffer {
     }
 
     synchronized List<BufferedPacket> drain() {
-        return drain(packets.size());
+        return packets.isEmpty() ? List.of() : drain(packets.size());
     }
 
     synchronized List<BufferedPacket> drain(int limit) {
