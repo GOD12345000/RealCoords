@@ -96,6 +96,63 @@ class ChunkReplayCacheTest {
     }
 
     @Test
+    void blockOverlaysReplaceOlderValuesAndReplayAfterBaseChunk() {
+        ChunkReplayCache cache = new ChunkReplayCache(4, 1024, false);
+        assertTrue(cache.put(2, -3, new byte[]{10, 11}));
+        assertTrue(cache.putOverlay(2, -3, ChunkReplayCache.OverlayType.BLOCK_UPDATE,
+                0x0000000200000003L, new byte[]{1}));
+        assertTrue(cache.putOverlay(2, -3, ChunkReplayCache.OverlayType.BLOCK_UPDATE,
+                0x0000000200000003L, new byte[]{2}));
+        assertTrue(cache.putOverlay(2, -3, ChunkReplayCache.OverlayType.BLOCK_ENTITY,
+                0x0000000200000003L, new byte[]{3}));
+
+        ChunkReplayCache.ReplayChunk replay = cache.get(2, -3);
+        assertArrayEquals(new byte[]{10, 11}, replay.payload());
+        assertEquals(2, replay.overlays().size());
+        assertArrayEquals(new byte[]{2}, replay.overlays().get(0).payload());
+        assertArrayEquals(new byte[]{3}, replay.overlays().get(1).payload());
+    }
+
+    @Test
+    void overlayMemoryIsCountedAndEvictedWithItsChunk() {
+        ChunkReplayCache cache = new ChunkReplayCache(2, 100, false);
+        assertTrue(cache.put(0, 0, new byte[]{1, 2, 3}));
+        assertTrue(cache.putOverlay(0, 0, ChunkReplayCache.OverlayType.BLOCK_UPDATE,
+                1L, new byte[]{4, 5, 6}));
+        assertEquals(3 + 24 + 3, cache.storedBytes());
+
+        assertTrue(cache.remove(0, 0));
+        assertEquals(0, cache.storedBytes());
+        assertNull(cache.get(0, 0));
+    }
+
+    @Test
+    void overlaysAreRemovedWhenChunkLeavesRetentionRadius() {
+        ChunkReplayCache cache = new ChunkReplayCache(4, 1024, false);
+        cache.put(0, 0, new byte[]{1});
+        cache.putOverlay(0, 0, ChunkReplayCache.OverlayType.BLOCK_ENTITY, 2L, new byte[]{3, 4});
+        cache.put(10, 0, new byte[]{5});
+        cache.evictOutside(10, 0, 2);
+
+        assertNull(cache.get(0, 0));
+        assertEquals(1, cache.size());
+        assertEquals(1, cache.storedBytes());
+    }
+
+    @Test
+    void replacingBaseChunkKeepsNewerOverlay() {
+        ChunkReplayCache cache = new ChunkReplayCache(4, 1024, false);
+        cache.put(1, 1, new byte[]{1});
+        cache.putOverlay(1, 1, ChunkReplayCache.OverlayType.BLOCK_UPDATE, 7L, new byte[]{9});
+        cache.put(1, 1, new byte[]{2});
+
+        ChunkReplayCache.ReplayChunk replay = cache.get(1, 1);
+        assertArrayEquals(new byte[]{2}, replay.payload());
+        assertEquals(1, replay.overlays().size());
+        assertArrayEquals(new byte[]{9}, replay.overlays().getFirst().payload());
+    }
+
+    @Test
     void removeAndClearKeepAccountingConsistent() {
         ChunkReplayCache cache = new ChunkReplayCache(8, 1024, false);
         cache.put(1, 2, new byte[]{1, 2, 3});
