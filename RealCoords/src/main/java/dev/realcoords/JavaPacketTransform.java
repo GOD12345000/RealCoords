@@ -74,6 +74,7 @@ final class JavaPacketTransform {
     private final double maxServerboundJump;
     private final ShiftConfig config;
     private Key currentWorld;
+    private JavaOriginState.Snapshot pendingOriginChange;
 
     JavaPacketTransform(ShiftConfig config) {
         this(new JavaOriginState(config), config.maxJump, config);
@@ -336,6 +337,12 @@ final class JavaPacketTransform {
             return move.withX(realX).withZ(realZ);
         }
         return packet;
+    }
+
+    JavaOriginState.Snapshot takeOriginChange() {
+        JavaOriginState.Snapshot snapshot = pendingOriginChange;
+        pendingOriginChange = null;
+        return snapshot;
     }
 
     int offsetX() {
