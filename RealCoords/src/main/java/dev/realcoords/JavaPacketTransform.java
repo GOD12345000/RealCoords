@@ -53,6 +53,7 @@ import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.inventory.S
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.inventory.ServerboundSetStructureBlockPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.inventory.ServerboundSetJigsawBlockPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.level.ServerboundSignUpdatePacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.level.ServerboundSetTestBlockPacket;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -278,6 +279,11 @@ final class JavaPacketTransform {
         if (packet instanceof ServerboundPickItemFromBlockPacket pick) {
             Vector3i p = pick.getPos();
             return pick.withPos(Vector3i.from(p.getX() + origin.offsetX(), p.getY(),
+                    p.getZ() + origin.offsetZ()));
+        }
+        if (packet instanceof ServerboundSetTestBlockPacket testBlock) {
+            Vector3i p = testBlock.getPosition();
+            return testBlock.withPosition(Vector3i.from(p.getX() + origin.offsetX(), p.getY(),
                     p.getZ() + origin.offsetZ()));
         }
         if (packet instanceof ServerboundSetCommandBlockPacket command) {
