@@ -6,6 +6,9 @@ import org.cloudburstmc.math.vector.Vector3i;
 import org.cloudburstmc.nbt.NbtMap;
 import org.geysermc.mcprotocollib.network.packet.Packet;
 import org.geysermc.mcprotocollib.protocol.data.game.entity.player.PositionElement;
+import org.geysermc.mcprotocollib.protocol.data.game.entity.metadata.EntityMetadata;
+import org.geysermc.mcprotocollib.protocol.data.game.entity.metadata.MetadataTypes;
+import org.geysermc.mcprotocollib.protocol.data.game.entity.metadata.type.ObjectEntityMetadata;
 import org.geysermc.mcprotocollib.protocol.data.game.entity.player.Hand;
 import org.geysermc.mcprotocollib.protocol.data.game.entity.object.Direction;
 import org.geysermc.mcprotocollib.protocol.data.game.level.block.BlockChangeEntry;
@@ -16,6 +19,7 @@ import org.geysermc.mcprotocollib.protocol.data.game.level.waypoint.Vec3iWaypoin
 import org.geysermc.mcprotocollib.protocol.data.game.level.waypoint.WaypointOperation;
 import org.geysermc.mcprotocollib.protocol.data.game.level.notify.RainStrengthValue;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.player.ClientboundPlayerPositionPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundSetEntityDataPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundLevelChunkWithLightPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundBlockUpdatePacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundUseItemOnPacket;
@@ -179,6 +183,28 @@ class JavaPacketTransformTest {
         assertEquals(0.5f, restored.getCursorX());
         assertEquals(1.0f, restored.getCursorY());
         assertEquals(0.5f, restored.getCursorZ());
+    }
+
+    @Test
+    void blockPositionEntityMetadataIsShiftedIncludingOptionalValues() {
+        JavaPacketTransform transform = transformer();
+        ClientboundPlayerPositionPacket initial = new ClientboundPlayerPositionPacket(
+                1, 23_000_000, 70, -17_000_000, 0, 0, 0, 0, 0);
+        transform.clientbound(initial);
+
+        Vector3i real = Vector3i.from(23_000_004, 65, -16_999_996);
+        EntityMetadata<?, ?>[] entries = new EntityMetadata[]{
+                new ObjectEntityMetadata<>(1, MetadataTypes.BLOCK_POS, real),
+                new ObjectEntityMetadata<>(2, MetadataTypes.OPTIONAL_BLOCK_POS, Optional.of(real))
+        };
+        ClientboundSetEntityDataPacket packet = new ClientboundSetEntityDataPacket(7, entries);
+        ClientboundSetEntityDataPacket shifted =
+                (ClientboundSetEntityDataPacket) transform.clientbound(packet);
+
+        Vector3i expected = Vector3i.from(real.getX() - transform.offsetX(), real.getY(),
+                real.getZ() - transform.offsetZ());
+        assertEquals(expected, shifted.getMetadata()[0].getValue());
+        assertEquals(Optional.of(expected), shifted.getMetadata()[1].getValue());
     }
 
     @Test
