@@ -137,7 +137,7 @@ class JavaPacketTransformTest {
     }
 
     @Test
-    void cachedEntityReplaySendsSpawnBeforeMetadataAndShiftsSpawnPosition() {
+    void cachedEntityReplayRestoresSpawnAtShiftedPosition() {
         ShiftConfig config = new ShiftConfig();
         config.dims.put(0, new ShiftConfig.Dim());
         JavaPacketTransform transform = new JavaPacketTransform(config);
@@ -158,14 +158,13 @@ class JavaPacketTransformTest {
         transform.clientbound(metadata);
 
         List<Packet> replay = transform.replayCachedEntities(23_000_000, -17_000_000, 256, 8);
-        assertEquals(2, replay.size());
+        assertEquals(1, replay.size());
         ClientboundAddEntityPacket replayedSpawn =
                 assertInstanceOf(ClientboundAddEntityPacket.class, replay.get(0));
-        assertInstanceOf(ClientboundSetEntityDataPacket.class, replay.get(1));
         assertEquals(23_000_012 - transform.offsetX(), replayedSpawn.getX());
         assertEquals(-16_999_988 - transform.offsetZ(), replayedSpawn.getZ());
         assertEquals(1, transform.cachedEntityCount());
-        assertEquals(2, transform.replayCachedEntities(23_000_000, -17_000_000, 256, 8).size());
+        assertEquals(1, transform.replayCachedEntities(23_000_000, -17_000_000, 256, 8).size());
     }
 
     @Test
