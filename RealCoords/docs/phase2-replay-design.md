@@ -1,6 +1,6 @@
 # Phase 2: live re-origin and Geyser state replay design
 
-Status: investigation/design only. No live re-origin is enabled by this document.
+Status: partial implementation. Packet snapshotting and bounded chunk/update capture are implemented; replay and live re-origin are still disabled.
 
 ## Verified Geyser reset behavior
 
@@ -42,8 +42,8 @@ The Bedrock dimension transition acknowledgement is a Bedrock-side event handled
 
 The following state must be captured or explicitly proven to be re-sent after a synthetic reset:
 
-1. **Chunks:** original clientbound chunk packets keyed by real chunk X/Z; compressed chunk payload; latest light/biome data; bounded by configured view distance and per-player max count.
-2. **Block overlays:** latest block updates, section updates, block-entity updates, block events and destruction state received after the cached chunk. Apply overlays after replaying each chunk.
+1. **Chunks (capture implemented):** complete original `ClientboundLevelChunkWithLightPacket` snapshots keyed by real chunk X/Z, including chunk bytes, heightmaps, embedded block entities and light data. Deflate compression, LRU chunk-count eviction and a per-player byte budget are enforced. Standalone light updates are captured as overlays.
+2. **Block overlays (partially implemented):** latest single-block updates, section-block updates (expanded into individual block snapshots), and block-entity updates are captured after the base chunk. A newer base chunk invalidates older overlays. Block events, block-destruction state and separate biome packets are not captured yet. Overlay replay is not wired yet.
 3. **Entities:** latest add/spawn packet plus latest metadata, attributes, equipment, effects, passengers, links and position/orientation. Remove all records on entity removal. Replaying only AddEntity is insufficient for mobs and item frames.
 4. **Global world state:** world border, default spawn, time, weather, difficulty/game mode, teams/objectives where relevant, and other state Geyser resets or does not automatically re-request.
 5. **Player/session state:** current real position, rotation, velocity, dimension/world identity, teleport IDs, inventory state and effect state.
@@ -60,6 +60,13 @@ The transaction is intentionally not enabled until every stage is testable:
 6. Replay entities in dependency-safe order (spawn, metadata/attributes/equipment/effects, links/passengers, final position).
 7. Restore global state and wait for the Bedrock player to acknowledge/reach the new local position.
 8. Unfreeze movement only after replay completion or abort safely and restore the previous origin.
+
+## Current implementation boundary
+
+- `JavaPacketSnapshot` uses each MCProtocolLib packet's own serializer and ByteBuf constructor for lossless snapshots; it does not stringify or manually rebuild packet fields.
+- `JavaPacketTransform` captures chunk packets before coordinate rewriting, and captures later block/section/block-entity/light updates under their real chunk coordinates.
+- The cache is currently observational only: no cached packet is injected back into Geyser yet, and no synthetic reset or continuous movement re-origin is active.
+- Overlay byte accounting includes payload bytes plus a fixed per-entry estimate; it is a bounded accounting budget, not an exact JVM heap measurement.
 
 ## Safety gates before enabling
 
