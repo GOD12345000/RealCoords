@@ -114,6 +114,12 @@ class JavaPacketTransformTest {
                 new org.geysermc.mcprotocollib.protocol.data.game.level.block.BlockEntityInfo[0],
                 new org.geysermc.mcprotocollib.protocol.data.game.level.LightUpdateData(
                         new BitSet(), new BitSet(), new BitSet(), new BitSet(), List.of(), List.of())));
+        int destinationChunkX = (23_000_000 + 50_040) / 16;
+        transform.clientbound(new ClientboundLevelChunkWithLightPacket(
+                destinationChunkX, chunkZ, new byte[]{2}, Map.of(),
+                new org.geysermc.mcprotocollib.protocol.data.game.level.block.BlockEntityInfo[0],
+                new org.geysermc.mcprotocollib.protocol.data.game.level.LightUpdateData(
+                        new BitSet(), new BitSet(), new BitSet(), new BitSet(), List.of(), List.of())));
 
         int oldOffsetX = transform.offsetX();
         double realX = 23_000_000;
