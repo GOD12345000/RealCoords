@@ -623,10 +623,11 @@ final class JavaPacketTransform {
         }
         if (packet instanceof ServerboundMoveVehiclePacket move) {
             Vector3d p = move.getPosition();
+            double realX = p.getX() + origin.offsetX();
+            double realZ = p.getZ() + origin.offsetZ();
             lastPlayerY = p.getY();
-            if (!acceptMovementPosition(p.getX(), p.getZ())) return null;
-            return move.withPosition(Vector3d.from(p.getX() + origin.offsetX(), p.getY(),
-                    p.getZ() + origin.offsetZ()));
+            if (!acceptMovementPosition(realX, realZ)) return null;
+            return move.withPosition(Vector3d.from(realX, p.getY(), realZ));
         }
         if (packet instanceof ServerboundMovePlayerPosPacket move) {
             double realX = move.getX() + origin.offsetX();
@@ -652,7 +653,9 @@ final class JavaPacketTransform {
     boolean observeMovementDuringReplay(Packet packet) {
         if (packet instanceof ServerboundMoveVehiclePacket move) {
             Vector3d position = move.getPosition();
-            if (!origin.observeServerboundPosition(position.getX(), position.getZ(), maxServerboundJump)) return false;
+            double realX = position.getX() + origin.offsetX();
+            double realZ = position.getZ() + origin.offsetZ();
+            if (!origin.observeServerboundPosition(realX, realZ, maxServerboundJump)) return false;
             lastPlayerY = position.getY();
             return true;
         }
