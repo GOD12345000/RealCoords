@@ -91,6 +91,22 @@ class JavaPacketTransformTest {
     }
 
     @Test
+    void mixedRelativePositionComponentsOnlyShiftAbsoluteAxis() {
+        JavaPacketTransform transform = transformer();
+        ClientboundPlayerPositionPacket initial = new ClientboundPlayerPositionPacket(
+                1, 23_000_000, 70, 17_000_000, 0, 0, 0, 0, 0);
+        transform.clientbound(initial);
+
+        ClientboundPlayerPositionPacket mixed = new ClientboundPlayerPositionPacket(
+                2, 12.5, 70, 17_000_100, 0, 0, 0, 0, 0, PositionElement.X);
+        ClientboundPlayerPositionPacket shifted =
+                (ClientboundPlayerPositionPacket) transform.clientbound(mixed);
+
+        assertEquals(12.5, shifted.getPosition().getX());
+        assertEquals(17_000_100 - transform.offsetZ(), shifted.getPosition().getZ());
+    }
+
+    @Test
     void serverboundMovementRestoresRealCoordinates() {
         JavaPacketTransform transform = transformer();
         ClientboundPlayerPositionPacket initial = new ClientboundPlayerPositionPacket(
