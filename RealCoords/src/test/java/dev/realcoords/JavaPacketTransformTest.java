@@ -137,8 +137,8 @@ class JavaPacketTransformTest {
                 1, 23_000_000, 70, -17_000_000, 0, 0, 0, 0, 0));
         transform.takeOriginChange();
 
-        double localX = 12.5;
-        double localZ = -8.25;
+        double localX = -63.5;
+        double localZ = -64.25;
         ServerboundMoveVehiclePacket vehicleMove = new ServerboundMoveVehiclePacket(
                 Vector3d.from(localX, 70, localZ), 90, 90, true);
         Packet forwarded = transform.serverbound(vehicleMove);
@@ -164,8 +164,8 @@ class JavaPacketTransformTest {
                 1, 23_000_000, 70, -17_000_000, 0, 0, 0, 0, 0));
         transform.takeOriginChange();
 
-        double localX = 18.0;
-        double localZ = -9.0;
+        double localX = -62.0;
+        double localZ = -63.0;
         assertTrue(transform.observeMovementDuringReplay(new ServerboundMoveVehiclePacket(
                 Vector3d.from(localX, 70, localZ), 90, 90, true)));
         assertEquals(localX + transform.offsetX(), transform.realX());
