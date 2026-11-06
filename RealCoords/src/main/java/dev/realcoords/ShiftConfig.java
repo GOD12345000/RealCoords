@@ -22,6 +22,7 @@ final class ShiftConfig {
     }
 
     boolean enabled = true, debug;
+    String layer = "java";
     int cooldownMs = 5000, ackTimeoutMs = 3000, guardIntervalMs = 500;
     double ackTolerance = 4.0, maxJump = 64.0;
 
@@ -66,6 +67,11 @@ final class ShiftConfig {
         ShiftConfig c = new ShiftConfig();
         Map<String, Object> os = sec(root, "origin-shift");
         c.enabled = bool(os, "enabled", true);
+        c.layer = str(os, "layer", "java").trim().toLowerCase(java.util.Locale.ROOT);
+        if (!c.layer.equals("java") && !c.layer.equals("bedrock")) {
+            log.warning("[RealCoords] origin-shift.layer 無效，改用 java");
+            c.layer = "java";
+        }
 
         Dim base = new Dim();
         base.alignment = align(num(os, "alignment", 256));
