@@ -155,6 +155,7 @@ final class JavaSessionHook {
 
         private final JavaPacketTransform transform;
         private final GeyserSession geyserSession;
+        private final SyntheticResetGate syntheticResetGate = new SyntheticResetGate();
 
         JavaPacketTransformHandler(JavaPacketTransform transform, ExtensionLogger log) {
             this(transform, null, log);
@@ -164,6 +165,25 @@ final class JavaSessionHook {
             this.transform = transform;
             this.geyserSession = geyserSession;
             this.log = log;
+        }
+
+        boolean beginSyntheticReset(int reservedTeleportId) {
+            return syntheticResetGate.begin(reservedTeleportId);
+        }
+
+        void abortSyntheticReset() {
+            syntheticResetGate.abort();
+        }
+
+        int replayCachedChunks(ChannelHandlerContext ctx, int centerChunkX, int centerChunkZ, int limit) {
+            if (!ctx.executor().inEventLoop()) {
+                throw new IllegalStateException("Cached chunk replay must run on the downstream channel event loop");
+            }
+            var packets = transform.replayCachedChunks(centerChunkX, centerChunkZ, limit);
+            for (Packet packet : packets) {
+                ctx.fireChannelRead(packet);
+            }
+            return packets.size();
         }
 
         @Override
@@ -206,6 +226,10 @@ final class JavaSessionHook {
                 if (log != null) log.info("[RealCoords] Java hook first serverbound packet: " + packet.getClass().getName());
             }
             if (message instanceof Packet packet) {
+                if (syntheticResetGate.shouldSuppress(packet)) {
+                    promise.setSuccess();
+                    return;
+                }
                 Packet transformed = transform.serverbound(packet);
                 if (transformed != null) {
                     super.write(ctx, transformed, promise);
