@@ -125,9 +125,13 @@ final class JavaSessionHook {
             return;
         }
 
-        channel.eventLoop().execute(() -> {
+        Runnable install = () -> {
             ChannelPipeline pipeline = channel.pipeline();
             if (pipeline.get(HANDLER_NAME) != null) {
+                return;
+            }
+            if (!channel.isActive()) {
+                log.error("[RealCoords] Java hook probe: downstream channel is not active; refusing late installation");
                 return;
             }
             if (pipeline.get(NetworkConstants.MANAGER_NAME) == null) {
@@ -138,7 +142,16 @@ final class JavaSessionHook {
             JavaPacketProbe probe = new JavaPacketProbe(log);
             pipeline.addBefore(NetworkConstants.MANAGER_NAME, HANDLER_NAME, probe);
             log.info("[RealCoords] Java hook probe installed; pipeline=" + pipeline.names());
-        });
+        };
+
+        // ConnectedEvent is fired from channelActive. Install inline when already on
+        // the channel event loop so the handler is present before MCProtocolLib flushes
+        // its pending packet queue after firing ConnectedEvent.
+        if (channel.eventLoop().inEventLoop()) {
+            install.run();
+        } else {
+            channel.eventLoop().execute(install);
+        }
     }
 
     private static final class JavaPacketProbe extends ChannelDuplexHandler {
