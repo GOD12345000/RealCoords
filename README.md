@@ -153,15 +153,32 @@ plugins/Geyser-Velocity/extensions/realcoords/config.yml
 | enabled | true | 全域啟用浮動原點 |
 | layer | java | `java`：Java 協議層；`bedrock`：舊版相容模式 |
 | alignment | 256 | X/Z 偏移量的對齊間隔（格） |
-| trigger-distance | 50000 | 主世界／未覆寫維度的觸發距離（格） |
-| reset-distance | 20000 | 已偏移後，允許重設偏移的距離（格） |
+| recenter-on-reload | 2048 | 登入／重生／維度切換／遠距傳送等免費重載事件的重新置中門檻（格） |
+| trigger-distance | 100000 | 連續移動模式的精度觸發距離（格）；預設值依 float 精度設定 |
+| reset-distance | 50000 | 已偏移後，允許重設偏移的距離（格）；必須小於 trigger-distance |
 | cooldown-ticks | 100 | 舊 Bedrock 模式兩次偏移操作之間的冷卻時間 |
 | ack-timeout-ticks | 60 | 舊 Bedrock 模式等待客戶端位置確認的逾時時間 |
 | ack-tolerance | 4.0 | 舊 Bedrock 模式確認位置時容許的誤差 |
 | dimensions.*.enabled | true | 個別維度是否啟用 |
 | 地獄覆寫 | 6000 / 2500 / 128 | 依序為觸發距離、重設距離、對齊間隔 |
 
-Minecraft 正常 tick rate 約為每秒 20 ticks；例如 100 ticks 約為 5 秒。觸發與重設距離形成遲滯區間，避免玩家在同一門檻附近反覆切換。Java 模式階段 1 不使用 `cooldown-ticks`、`ack-timeout-ticks` 與 `ack-tolerance`；這三項保留給舊 Bedrock 模式。
+Minecraft 正常 tick rate 約為每秒 20 ticks；例如 100 ticks 約為 5 秒。觸發與重設距離形成遲滯區間，避免玩家在同一門檻附近反覆切換。登入、重生、維度切換及遠距傳送本來就會使 Geyser 重載世界，因此可使用較小的 `recenter-on-reload` 免費重新置中；連續移動則使用較大的 `trigger-distance`，避免頻繁重載。真實座標仍在 `reset-distance` 範圍內時會保留原本不偏移的行為。Java 模式階段 1 不使用 `cooldown-ticks`、`ack-timeout-ticks` 與 `ack-tolerance`；這三項保留給舊 Bedrock 模式。
+
+
+### float 座標精度與 ULP
+
+Java／Geyser 會在部分座標處理路徑使用 IEEE 754 `float`。數值越大，相鄰可表示浮點數的間距（ULP）越大；因此應在座標精度開始明顯下降前重新置中。
+
+| 局部座標量級 | `Math.ulp((float) 座標)` | 約略間距 |
+|---:|---:|---:|
+| 4,096 | 0.00048828125 | 0.0005 格 |
+| 65,536 | 0.0078125 | 0.008 格 |
+| 131,072 | 0.015625 | 0.016 格 |
+| 1,048,576 | 0.125 | 0.125 格 |
+| 8,388,608 | 1 | 1 格 |
+| 16,777,216 | 2 | 2 格 |
+
+預設 `trigger-distance: 100000` 時，局部座標的 float ULP 約為 0.0078125 格，四捨五入轉換誤差最多約半個 ULP。若將 `trigger-distance` 設定為大於 4,000,000，載入設定時會記錄警告，因為此時 float ULP 已達 0.25 格以上。
 
 ### safety：位置安全檢查
 

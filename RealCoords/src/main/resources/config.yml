@@ -9,10 +9,12 @@ origin-shift:
   shift-while-moving: false
   # 偏移量的對齊單位，必須是 16 的倍數（會自動修正）
   alignment: 256
-  # 真實 X/Z 座標超過此值時，登入／重生／遠距傳送會選擇新原點；啟用 shift-while-moving 時也用於連續移動觸發
-  trigger-distance: 50000
-  # 真實座標回到此範圍內（且目前有偏移）才歸零。必須小於 trigger-distance（遲滯）
-  reset-distance: 20000
+  # 登入／重生／維度切換／遠距傳送時，若局部座標超過此值就重新置中（這些事件本來就會重載世界）
+  recenter-on-reload: 2048
+  # 連續移動模式的精度觸發門檻；預設 100000 格。數值過大會降低 float 座標精度
+  trigger-distance: 100000
+  # 真實座標回到此範圍內時歸零；必須小於 trigger-distance（遲滯）
+  reset-distance: 50000
   # bedrock 模式兩次換原點的最短間隔；Java 連續移動模式也會使用此冷卻時間
   cooldown-ticks: 100
   # bedrock 模式換原點／伺服器傳送後，等待客戶端到位的最長時間

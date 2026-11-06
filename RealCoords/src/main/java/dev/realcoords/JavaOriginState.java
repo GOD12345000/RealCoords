@@ -85,19 +85,19 @@ final class JavaOriginState {
 
         if (resetPending || !hasPosition) {
             if (needsAbsoluteX && absoluteX) {
-                offsetX = candidateOffset(nextX, offsetX);
+                offsetX = reloadOffset(nextX, offsetX);
                 needsAbsoluteX = false;
             }
             if (needsAbsoluteZ && absoluteZ) {
-                offsetZ = candidateOffset(nextZ, offsetZ);
+                offsetZ = reloadOffset(nextZ, offsetZ);
                 needsAbsoluteZ = false;
             }
             resetPending = needsAbsoluteX || needsAbsoluteZ;
         } else if (absoluteX && absoluteZ) {
             double viewDistance = Math.max(0, viewDistanceChunks) * 16.0;
             if (Math.hypot(nextX - lastX, nextZ - lastZ) > viewDistance) {
-                offsetX = nextOffset(offsetX, nextX);
-                offsetZ = nextOffset(offsetZ, nextZ);
+                offsetX = reloadOffset(nextX, offsetX);
+                offsetZ = reloadOffset(nextZ, offsetZ);
             }
         }
 
@@ -179,15 +179,18 @@ final class JavaOriginState {
         publishedOffsets = new Offsets(offsetX, offsetZ);
     }
 
-    private int candidateOffset(double real, int current) {
+    private int reloadOffset(double real, int current) {
         ShiftConfig.Dim dim = config.dim(dimension);
         if (!dim.enabled) {
             return 0;
         }
-        if (current != 0 && Math.abs(real) < dim.reset) {
+        // A reload is already happening (login/respawn/dimension change/distant
+        // teleport), so re-center at the smaller precision threshold without
+        // causing an additional world reload. Preserve the unshifted near-origin case.
+        if (Math.abs(real) < dim.reset) {
             return 0;
         }
-        if (Math.abs(real - current) > dim.trigger) {
+        if (Math.abs(real - current) > config.recenterOnReload) {
             return aligned(real, dim.alignment);
         }
         return current;

@@ -18,12 +18,13 @@ import java.util.Map;
 final class ShiftConfig {
     static final class Dim {
         boolean enabled = true;
-        int trigger = 50000, reset = 20000, alignment = 256;
+        int trigger = 100000, reset = 50000, alignment = 256;
     }
 
     boolean enabled = true, debug, shiftWhileMoving;
     String layer = "java";
     int cooldownMs = 5000, ackTimeoutMs = 3000, guardIntervalMs = 500;
+    int recenterOnReload = 2048;
     double ackTolerance = 4.0, maxJump = 64.0;
 
     boolean cacheEnabled = true, cacheCompress = true;
@@ -77,8 +78,16 @@ final class ShiftConfig {
 
         Dim base = new Dim();
         base.alignment = align(num(os, "alignment", 256));
-        base.trigger = Math.max(1000, num(os, "trigger-distance", 50000));
-        base.reset = num(os, "reset-distance", 20000);
+        base.trigger = Math.max(1000, num(os, "trigger-distance", 100000));
+        base.reset = Math.max(0, num(os, "reset-distance", 50000));
+        c.recenterOnReload = Math.max(0, num(os, "recenter-on-reload", 2048));
+        if (base.reset >= base.trigger) {
+            log.warning("[RealCoords] reset-distance 必須小於 trigger-distance，已自動調整");
+            base.reset = base.trigger / 2;
+        }
+        if (base.trigger > 4_000_000) {
+            log.warning("[RealCoords] trigger-distance > 4,000,000：float ULP 已達 0.25 格以上，座標精度可能明顯下降");
+        }
         c.cooldownMs = num(os, "cooldown-ticks", 100) * 50;
         c.ackTimeoutMs = num(os, "ack-timeout-ticks", 60) * 50;
         c.ackTolerance = dbl(os, "ack-tolerance", 4.0);
@@ -90,11 +99,14 @@ final class ShiftConfig {
             Dim x = new Dim();
             x.enabled = bool(d, "enabled", true);
             x.trigger = Math.max(1000, num(d, "trigger-distance", base.trigger));
-            x.reset = num(d, "reset-distance", base.reset);
+            x.reset = Math.max(0, num(d, "reset-distance", base.reset));
             x.alignment = align(num(d, "alignment", base.alignment));
             if (x.reset >= x.trigger) {
                 log.warning("[RealCoords] " + names[id] + ": reset-distance 必須小於 trigger-distance，已自動調整");
                 x.reset = x.trigger / 2;
+            }
+            if (d.containsKey("trigger-distance") && x.trigger > 4_000_000) {
+                log.warning("[RealCoords] " + names[id] + " trigger-distance > 4,000,000：float ULP 已達 0.25 格以上，座標精度可能明顯下降");
             }
             c.dims.put(id, x);
         }

@@ -13,8 +13,9 @@ class JavaOriginStateTest {
     void setUp() {
         config = new ShiftConfig();
         ShiftConfig.Dim overworld = new ShiftConfig.Dim();
-        overworld.trigger = 50_000;
-        overworld.reset = 20_000;
+        overworld.trigger = 100_000;
+        overworld.reset = 50_000;
+        config.recenterOnReload = 2_048;
         overworld.alignment = 256;
         config.dims.put(0, overworld);
         state = new JavaOriginState(config);
@@ -160,7 +161,7 @@ class JavaOriginStateTest {
         int originalOffsetZ = state.offsetZ();
 
         JavaOriginState.Snapshot changed = null;
-        for (int step = 1; step <= 1300 && changed == null; step++) {
+        for (int step = 1; step <= 2600 && changed == null; step++) {
             assertTrue(state.acceptServerboundPosition(
                     23_000_000 + step * 40.0, -17_000_000 + step * 40.0, 64.0));
             changed = state.takeMovementOriginChange();
@@ -216,6 +217,35 @@ class JavaOriginStateTest {
         }
         assertEquals(offsetX, state.offsetX());
         assertEquals(offsetZ, state.offsetZ());
+    }
+
+
+    @Test
+    void freeReloadRecentersAtTheSmallerPrecisionThreshold() {
+        JavaOriginState.Snapshot result = state.absolutePosition(10_000, -12_000, 10);
+
+        assertTrue(result.changed());
+        assertTrue(Math.abs(10_000 - result.offsetX()) <= 128);
+        assertTrue(Math.abs(-12_000 - result.offsetZ()) <= 128);
+    }
+
+    @Test
+    void freeReloadPreservesUnshiftedPositionInsideResetDistance() {
+        JavaOriginState.Snapshot result = state.absolutePosition(1_000, -1_000, 10);
+
+        assertFalse(result.changed());
+        assertEquals(0, result.offsetX());
+        assertEquals(0, result.offsetZ());
+    }
+
+    @Test
+    void freeReloadRecentersExistingOffsetWhenLocalPositionExceedsThreshold() {
+        state.absolutePosition(100_000, 100_000, 10);
+        JavaOriginState.Snapshot result = state.absolutePosition(110_000, 112_000, 10);
+
+        assertTrue(result.changed());
+        assertTrue(Math.abs(110_000 - result.offsetX()) <= 128);
+        assertTrue(Math.abs(112_000 - result.offsetZ()) <= 128);
     }
 
     @Test
