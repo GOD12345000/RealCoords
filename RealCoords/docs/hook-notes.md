@@ -107,7 +107,8 @@ Java hook 安裝後應輸出：
 ## 7. 實作狀態（2026-11-06）
 
 - `JavaSessionHook` 已插入 Java downstream 的 `manager` 前，對 inbound clientbound 與 outbound serverbound `Packet` 做實例替換。
-- `JavaPacketTransform` 已覆蓋玩家位置、實體位置同步／傳送／生成、區塊與光照／biome、方塊更新、方塊實體、區塊事件、粒子、聲音、爆炸、世界邊界、出生點、部分 metadata，以及玩家／載具移動與部分方塊互動。
+- `JavaPacketTransform` 已覆蓋玩家位置、實體位置同步／傳送／生成、區塊與光照／biome、方塊更新、方塊實體、區塊事件、粒子、聲音、爆炸、世界邊界、出生點、部分 metadata／waypoint，以及玩家／載具移動與部分方塊互動。
+- `JavaOriginState` 以玩家連線為範圍保存各維度獨立原點；相對 X/Z 分量不平移，初始／重生後會等到兩軸都有絕對值才完成原點選擇。
 - `JavaBedrockAuxHook` 僅處理 ActionBar、原版座標 gamerule 與真實座標追蹤；不再做第二次座標轉換。
 - 玩家 serverbound 位置在加回偏移後會套用 `safety.max-serverbound-jump`，不合理的玩家移動封包會被丟棄。
 - Java 模式尚未涵蓋所有世界座標封包；尤其是 login／respawn 的 `lastDeathPos` 在新原點尚未由後續絕對玩家位置決定前無法正確平移。這類資料需額外設計，不可視為已支援。
