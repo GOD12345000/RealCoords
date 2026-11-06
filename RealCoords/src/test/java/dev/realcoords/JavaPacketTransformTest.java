@@ -30,6 +30,8 @@ import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.Clientbound
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.ClientboundRespawnPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundSetEntityDataPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundAddEntityPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundMoveEntityPosPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundEntityPositionSyncPacket;
 import org.geysermc.mcprotocollib.protocol.data.game.entity.type.EntityType;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundLevelChunkWithLightPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundBlockUpdatePacket;
@@ -87,6 +89,33 @@ class JavaPacketTransformTest {
         assertTrue(temporary.isKeepAttributeModifiers());
         assertTrue(restored.isKeepMetadata());
         assertTrue(restored.isKeepAttributeModifiers());
+    }
+
+    @Test
+    void entityRelativeMovementIsFoldedIntoAbsoluteReplayPosition() {
+        ShiftConfig config = new ShiftConfig();
+        config.dims.put(0, new ShiftConfig.Dim());
+        JavaPacketTransform transform = new JavaPacketTransform(config);
+        Key world = Key.key("minecraft:overworld");
+        PlayerSpawnInfo spawnInfo = new PlayerSpawnInfo(0, world, 0L, GameMode.SURVIVAL,
+                null, false, false, null, 0, 63);
+        transform.clientbound(new ClientboundLoginPacket(1, false, new Key[]{world},
+                20, 10, 10, false, true, false, spawnInfo, true, true));
+        transform.clientbound(new ClientboundPlayerPositionPacket(
+                1, 23_000_000, 70, -17_000_000, 0, 0, 0, 0, 0));
+        transform.clientbound(new ClientboundAddEntityPacket(
+                77, UUID.randomUUID(), EntityType.ZOMBIE, 23_000_010, 64, -16_999_990,
+                10, 20, 30));
+        transform.clientbound(new ClientboundMoveEntityPosPacket(
+                77, true, 0, null, 5, 2, -4));
+
+        List<Packet> replay = transform.replayCachedEntities(23_000_000, -17_000_000, 256, 8);
+        assertEquals(2, replay.size());
+        ClientboundEntityPositionSyncPacket position =
+                assertInstanceOf(ClientboundEntityPositionSyncPacket.class, replay.get(1));
+        assertEquals(23_000_015 - transform.offsetX(), position.getEndPosition().getX());
+        assertEquals(66, position.getEndPosition().getY());
+        assertEquals(-16_999_994 - transform.offsetZ(), position.getEndPosition().getZ());
     }
 
     @Test
