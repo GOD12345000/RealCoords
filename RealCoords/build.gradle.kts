@@ -33,6 +33,15 @@ tasks.shadowJar {
     relocate("org.yaml.snakeyaml", "dev.realcoords.libs.snakeyaml")
 }
 
-tasks.test { useJUnitPlatform() }
+tasks.test {
+    useJUnitPlatform()
+    testLogging {
+        events("failed", "skipped")
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+        showCauses = true
+        showExceptions = true
+        showStackTraces = true
+    }
+}
 
 tasks.build { dependsOn(tasks.shadowJar) }
