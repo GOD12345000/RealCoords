@@ -145,14 +145,30 @@ final class EntityReplayCache {
             if (result.size() >= limit) break;
             int entityId = entry.getKey();
             EntityState state = entry.getValue();
+            // Spawn every entity before replaying links/passengers or mutable state.
             for (Kind kind : Kind.values()) {
-                LinkedHashMap<Integer, StoredPacket> sameKind = state.packets.get(kind);
-                if (sameKind == null) continue;
-                for (Map.Entry<Integer, StoredPacket> packet : sameKind.entrySet()) {
-                    result.add(new ReplayPacket(entityId, kind, packet.getValue().type(),
-                            packet.getKey(), packet.getValue().payload()));
-                }
+                if (kind != Kind.SPAWN) continue;
+                appendPackets(result, entityId, state, kind);
             }
+        }
+        for (Map.Entry<Integer, EntityState> entry : ordered) {
+            if (result.size() >= limit * 16) break;
+            for (Kind kind : Kind.values()) {
+                if (kind == Kind.SPAWN) continue;
+                appendPackets(result, entry.getKey(), entry.getValue(), kind);
+                if (result.size() >= limit * 16) break;
+            }
+        }
+        return List.copyOf(result);
+    }
+
+    private static void appendPackets(List<ReplayPacket> result, int entityId, EntityState state, Kind kind) {
+        LinkedHashMap<Integer, StoredPacket> sameKind = state.packets.get(kind);
+        if (sameKind == null) return;
+        for (Map.Entry<Integer, StoredPacket> packet : sameKind.entrySet()) {
+            result.add(new ReplayPacket(entityId, kind, packet.getValue().type(),
+                    packet.getKey(), packet.getValue().payload()));
+        }
         }
         return List.copyOf(result);
     }
