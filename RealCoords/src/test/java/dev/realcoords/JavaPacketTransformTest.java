@@ -3,8 +3,11 @@ package dev.realcoords;
 import io.netty.channel.embedded.EmbeddedChannel;
 import org.geysermc.mcprotocollib.network.packet.Packet;
 import org.geysermc.mcprotocollib.protocol.data.game.entity.player.PositionElement;
+import org.geysermc.mcprotocollib.protocol.data.game.level.notify.GameEvent;
+import org.geysermc.mcprotocollib.protocol.data.game.level.notify.RainStrengthValue;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.player.ClientboundPlayerPositionPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundLevelChunkWithLightPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundGameEventPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundMovePlayerPosPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundMovePlayerPosRotPacket;
 import org.junit.jupiter.api.Test;
@@ -44,6 +47,18 @@ class JavaPacketTransformTest {
         ServerboundMovePlayerPosPacket restored = channel.readOutbound();
         assertEquals(23_000_001, restored.getX());
         assertEquals(-16_999_999, restored.getZ());
+        channel.finishAndReleaseAll();
+    }
+
+    @Test
+    void embeddedChannelPassesNonCoordinatePacketsUnchanged() {
+        EmbeddedChannel channel = new EmbeddedChannel(
+                new JavaSessionHook.JavaPacketTransformHandler(transformer(), null));
+        ClientboundGameEventPacket packet = new ClientboundGameEventPacket(
+                GameEvent.RAIN_LEVEL_CHANGE, new RainStrengthValue(0.5f));
+
+        assertTrue(channel.writeInbound(packet));
+        assertSame(packet, channel.readInbound());
         channel.finishAndReleaseAll();
     }
 
