@@ -179,6 +179,10 @@ final class JavaSessionHook {
                             + ", offsetZ=" + change.offsetZ());
                 }
                 super.channelRead(ctx, transformed);
+                if (transform.takeDeathPositionWarning() && log != null) {
+                    log.warning("[RealCoords] lastDeathPos remains outside the local origin radius; "
+                            + "Geyser may still lose precision for this distant death marker");
+                }
                 JavaPacketTransform.DeathPositionUpdate deathUpdate = transform.takeDeathPositionUpdate();
                 if (deathUpdate != null && geyserSession != null) {
                     geyserSession.getTickEventLoop().execute(() -> {
