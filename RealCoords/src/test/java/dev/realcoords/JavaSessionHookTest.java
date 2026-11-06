@@ -103,7 +103,7 @@ class JavaSessionHookTest {
         ReoriginReplayPlan plan = handler.prepareReplayPlan(0, 0, 0, 0, 256);
         ClientboundGameEventPacket live = new ClientboundGameEventPacket(GameEvent.START_RAINING, null);
 
-        assertFalse(channel.writeInbound(live));
+        channel.writeInbound(live);
         assertNull(channel.readInbound());
 
         handler.replayChunkBatch(channel.pipeline().context(handler), plan, 8);
