@@ -109,6 +109,10 @@ final class JavaOriginState {
     }
 
     boolean acceptServerboundPosition(double x, double z, double maxJump) {
+        return acceptServerboundPosition(x, z, maxJump, true);
+    }
+
+    boolean acceptServerboundPosition(double x, double z, double maxJump, boolean replayCacheAvailable) {
         if (hasPosition && Math.hypot(x - lastX, z - lastZ) > maxJump) {
             return false;
         }
@@ -119,7 +123,7 @@ final class JavaOriginState {
         needsAbsoluteZ = false;
         resetPending = false;
 
-        if (config.shiftWhileMoving) {
+        if (config.shiftWhileMoving && replayCacheAvailable) {
             long now = System.currentTimeMillis();
             if (now - lastMovementOriginShiftMs >= Math.max(0, config.cooldownMs)) {
                 int oldX = offsetX;
