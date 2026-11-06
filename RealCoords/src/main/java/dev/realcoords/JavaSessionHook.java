@@ -252,6 +252,15 @@ final class JavaSessionHook {
             return packets.size();
         }
 
+        int replayGlobalState(ChannelHandlerContext ctx) {
+            if (!ctx.executor().inEventLoop()) {
+                throw new IllegalStateException("Global state replay must run on the downstream channel event loop");
+            }
+            var packets = transform.replayGlobalState();
+            for (Packet packet : packets) ctx.fireChannelRead(packet);
+            return packets.size();
+        }
+
         int cachedEntityCount() {
             return transform.cachedEntityCount();
         }
