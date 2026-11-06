@@ -222,11 +222,11 @@ class JavaOriginStateTest {
 
     @Test
     void freeReloadRecentersAtTheSmallerPrecisionThreshold() {
-        JavaOriginState.Snapshot result = state.absolutePosition(10_000, -12_000, 10);
+        JavaOriginState.Snapshot result = state.absolutePosition(60_000, -62_000, 10);
 
         assertTrue(result.changed());
-        assertTrue(Math.abs(10_000 - result.offsetX()) <= 128);
-        assertTrue(Math.abs(-12_000 - result.offsetZ()) <= 128);
+        assertTrue(Math.abs(60_000 - result.offsetX()) <= 128);
+        assertTrue(Math.abs(-62_000 - result.offsetZ()) <= 128);
     }
 
     @Test
