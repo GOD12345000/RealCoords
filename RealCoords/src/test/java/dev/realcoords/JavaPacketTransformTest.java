@@ -105,6 +105,7 @@ class JavaPacketTransformTest {
                 20, 10, 10, false, true, false, spawnInfo, true, true));
         transform.clientbound(new ClientboundPlayerPositionPacket(
                 1, 23_000_000, 70, -17_000_000, 0, 0, 0, 0, 0));
+        transform.takeOriginChange(); // consume the initial login origin selection
 
         int chunkX = 23_000_000 / 16;
         int chunkZ = -17_000_000 / 16;
