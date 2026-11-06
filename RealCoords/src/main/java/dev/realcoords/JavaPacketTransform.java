@@ -8,6 +8,11 @@ import org.geysermc.mcprotocollib.protocol.data.game.entity.player.PlayerSpawnIn
 import org.geysermc.mcprotocollib.protocol.data.game.entity.metadata.EntityMetadata;
 import org.geysermc.mcprotocollib.protocol.data.game.entity.metadata.MetadataType;
 import org.geysermc.mcprotocollib.protocol.data.game.entity.metadata.type.ObjectEntityMetadata;
+import org.geysermc.mcprotocollib.protocol.data.game.entity.metadata.Equipment;
+import org.geysermc.mcprotocollib.protocol.data.game.item.ItemStack;
+import org.geysermc.mcprotocollib.protocol.data.game.item.component.DataComponents;
+import org.geysermc.mcprotocollib.protocol.data.game.item.component.DataComponentTypes;
+import org.geysermc.mcprotocollib.protocol.data.game.item.component.LodestoneTracker;
 import org.geysermc.mcprotocollib.protocol.data.game.entity.metadata.GlobalPos;
 import net.kyori.adventure.key.Key;
 import org.geysermc.mcprotocollib.protocol.data.game.level.block.BlockChangeEntry;
@@ -28,6 +33,11 @@ import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.Clie
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundTeleportEntityPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.player.ClientboundPlayerPositionPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundBlockUpdatePacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundSetEquipmentPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.inventory.ClientboundContainerSetContentPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.inventory.ClientboundContainerSetSlotPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.inventory.ClientboundSetCursorItemPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.inventory.ClientboundSetPlayerInventoryPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundChunksBiomesPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundTrackedWaypointPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundLevelParticlesPacket;
@@ -58,6 +68,7 @@ import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.inventory.S
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.inventory.ServerboundSetJigsawBlockPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.level.ServerboundSignUpdatePacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.level.ServerboundSetTestBlockPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.inventory.ServerboundSetCreativeModeSlotPacket;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -245,6 +256,30 @@ final class JavaPacketTransform {
             return sign.withPosition(Vector3i.from(p.getX() - origin.offsetX(), p.getY(),
                     p.getZ() - origin.offsetZ()));
         }
+        if (packet instanceof ClientboundSetEquipmentPacket equipment) {
+            Equipment[] entries = equipment.getEquipment().clone();
+            for (int i = 0; i < entries.length; i++) {
+                Equipment entry = entries[i];
+                entries[i] = new Equipment(entry.getSlot(), shiftItemStack(entry.getItem()));
+            }
+            return equipment.withEquipment(entries);
+        }
+        if (packet instanceof ClientboundContainerSetContentPacket content) {
+            ItemStack[] items = content.getItems() == null ? null : content.getItems().clone();
+            if (items != null) {
+                for (int i = 0; i < items.length; i++) items[i] = shiftItemStack(items[i]);
+            }
+            return content.withItems(items).withCarriedItem(shiftItemStack(content.getCarriedItem()));
+        }
+        if (packet instanceof ClientboundContainerSetSlotPacket slot) {
+            return slot.withItem(shiftItemStack(slot.getItem()));
+        }
+        if (packet instanceof ClientboundSetCursorItemPacket cursor) {
+            return cursor.withContents(shiftItemStack(cursor.getContents()));
+        }
+        if (packet instanceof ClientboundSetPlayerInventoryPacket inventory) {
+            return inventory.withContents(shiftItemStack(inventory.getContents()));
+        }
         if (packet instanceof ClientboundSetEntityDataPacket metadata) {
             return metadata.withMetadata(shiftMetadata(metadata.getMetadata()));
         }
@@ -321,6 +356,9 @@ final class JavaPacketTransform {
             return sign.withPosition(Vector3i.from(p.getX() + origin.offsetX(), p.getY(),
                     p.getZ() + origin.offsetZ()));
         }
+        if (packet instanceof ServerboundSetCreativeModeSlotPacket creative) {
+            return creative.withClickedItem(shiftItemStack(creative.getClickedItem()));
+        }
         if (packet instanceof ServerboundMoveVehiclePacket move) {
             Vector3d p = move.getPosition();
             return move.withPosition(Vector3d.from(p.getX() + origin.offsetX(), p.getY(),
@@ -355,6 +393,16 @@ final class JavaPacketTransform {
         return origin.offsetZ();
     }
 
+    private ItemStack shiftItemStack(ItemStack item) {
+        if (item == null || item.getDataComponentsPatch() == null) return item;
+        DataComponents components = item.getDataComponentsPatch();
+        LodestoneTracker tracker = components.get(DataComponentTypes.LODESTONE_TRACKER);
+        if (tracker == null || tracker.getPos() == null) return item;
+        DataComponents shifted = components.clone();
+        shifted.put(DataComponentTypes.LODESTONE_TRACKER, tracker.withPos(shiftGlobalPos(tracker.getPos())));
+        return new ItemStack(item.getId(), item.getAmount(), shifted);
+    }
+
     private Particle shiftParticle(Particle particle) {
         if (particle.getData() instanceof VibrationParticleData vibration
                 && vibration.getPositionSource() instanceof BlockPositionSource block) {
@@ -378,6 +426,8 @@ final class JavaPacketTransform {
             if (value instanceof Vector3i position) {
                 replacement = Vector3i.from(position.getX() - origin.offsetX(), position.getY(),
                         position.getZ() - origin.offsetZ());
+            } else if (value instanceof ItemStack item) {
+                replacement = shiftItemStack(item);
             } else if (value instanceof GlobalPos globalPos) {
                 replacement = shiftGlobalPos(globalPos);
             } else if (value instanceof java.util.Optional<?> optional && optional.isPresent()) {
