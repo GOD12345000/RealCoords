@@ -802,6 +802,16 @@ final class JavaPacketTransform {
         return List.copyOf(replay);
     }
 
+    List<Packet> replayBufferedUpdates(List<LiveUpdateBuffer.BufferedPacket> updates) {
+        if (updates.isEmpty()) return List.of();
+        List<Packet> replay = new ArrayList<>(updates.size());
+        for (LiveUpdateBuffer.BufferedPacket buffered : updates) {
+            MinecraftPacket packet = JavaPacketSnapshot.deserialize(buffered.packetType(), buffered.payload());
+            replay.add(clientbound(packet));
+        }
+        return List.copyOf(replay);
+    }
+
     List<Packet> replayGlobalBatch(List<GlobalStateReplayCache.Snapshot> states) {
         if (states.isEmpty()) return List.of();
         List<Packet> replay = new ArrayList<>(states.size());
