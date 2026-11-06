@@ -87,8 +87,9 @@ class JavaSessionHookTest {
         assertFalse(channel.writeOutbound(ServerboundPlayerLoadedPacket.INSTANCE));
         assertFalse(channel.writeOutbound(new ServerboundAcceptTeleportationPacket(
                 777777, 0, 70, 0, 0, 0)));
-        assertTrue(handler.beginSyntheticReset(777778));
-        handler.abortSyntheticReset();
+        assertFalse(handler.beginSyntheticReset(777778)); // a replay transaction is still active
+        channel.close();
+        channel.finishAndReleaseAll();
         assertFalse(channel.isOpen());
         channel.finishAndReleaseAll();
     }
