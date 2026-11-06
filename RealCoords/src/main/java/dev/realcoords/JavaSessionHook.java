@@ -95,7 +95,7 @@ final class JavaSessionHook {
                 });
                 // If connection completed before listener registration, install now.
                 if (session.isConnected() && finished.compareAndSet(false, true)) {
-                    installOnChannel(session, config, origin, log);
+                    installOnChannel(session, geyserSession, config, origin, log);
                 }
             }
         }, 0, 1, TimeUnit.MILLISECONDS);
