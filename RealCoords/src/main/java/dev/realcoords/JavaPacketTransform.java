@@ -612,34 +612,35 @@ final class JavaPacketTransform {
         }
         if (packet instanceof ServerboundMoveVehiclePacket move) {
             Vector3d p = move.getPosition();
-            if (!acceptMovementPosition(p.getX(), p.getZ())) return null;
             lastPlayerY = p.getY();
+            if (!acceptMovementPosition(p.getX(), p.getZ())) return null;
             return move.withPosition(Vector3d.from(p.getX() + origin.offsetX(), p.getY(),
                     p.getZ() + origin.offsetZ()));
         }
         if (packet instanceof ServerboundMovePlayerPosPacket move) {
             double realX = move.getX() + origin.offsetX();
             double realZ = move.getZ() + origin.offsetZ();
-            if (!acceptMovementPosition(realX, realZ)) return null;
             lastPlayerY = move.getY();
             hasPlayerPosition = true;
+            if (!acceptMovementPosition(realX, realZ)) return null;
             return move.withX(realX).withZ(realZ);
         }
         if (packet instanceof ServerboundMovePlayerPosRotPacket move) {
             double realX = move.getX() + origin.offsetX();
             double realZ = move.getZ() + origin.offsetZ();
-            if (!acceptMovementPosition(realX, realZ)) return null;
             lastPlayerY = move.getY();
             lastPlayerYaw = move.getYaw();
             lastPlayerPitch = move.getPitch();
             hasPlayerPosition = true;
+            if (!acceptMovementPosition(realX, realZ)) return null;
             return move.withX(realX).withZ(realZ);
         }
         return packet;
     }
 
     private boolean acceptMovementPosition(double realX, double realZ) {
-        if (!origin.acceptServerboundPosition(realX, realZ, maxServerboundJump)) return false;
+        boolean replayCacheAvailable = chunkReplayCache != null && chunkReplayCache.size() > 0;
+        if (!origin.acceptServerboundPosition(realX, realZ, maxServerboundJump, replayCacheAvailable)) return false;
         JavaOriginState.Snapshot movementChange = origin.takeMovementOriginChange();
         if (movementChange != null && movementChange.changed()) {
             pendingOriginChange = movementChange;
