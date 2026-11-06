@@ -135,6 +135,25 @@ final class ChunkReplayCache {
     }
 
     synchronized List<ReplayChunk> snapshotNearestFirst(int centerChunkX, int centerChunkZ,
+                                                         int radiusChunks, int limit) {
+        if (radiusChunks < 0) return List.of();
+        long radiusSquared = (long) radiusChunks * radiusChunks;
+        List<Map.Entry<ChunkPos, StoredChunk>> ordered = new ArrayList<>(chunks.entrySet());
+        ordered.removeIf(entry -> distanceSquared(entry.getKey(), centerChunkX, centerChunkZ) > radiusSquared);
+        ordered.sort(Comparator
+                .comparingLong((Map.Entry<ChunkPos, StoredChunk> entry) ->
+                        distanceSquared(entry.getKey(), centerChunkX, centerChunkZ))
+                .thenComparingInt(entry -> entry.getKey().x())
+                .thenComparingInt(entry -> entry.getKey().z()));
+        List<ReplayChunk> result = new ArrayList<>(Math.min(limit, ordered.size()));
+        for (Map.Entry<ChunkPos, StoredChunk> entry : ordered) {
+            if (result.size() >= limit) break;
+            result.add(replayChunk(entry.getKey(), entry.getValue()));
+        }
+        return List.copyOf(result);
+    }
+
+    synchronized List<ReplayChunk> snapshotNearestFirst(int centerChunkX, int centerChunkZ,
                                                          int startIndex, int limit) {
         if (limit <= 0 || startIndex < 0 || chunks.isEmpty()) return List.of();
         List<Map.Entry<ChunkPos, StoredChunk>> ordered = new ArrayList<>(chunks.entrySet());
