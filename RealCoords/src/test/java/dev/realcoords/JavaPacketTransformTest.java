@@ -206,7 +206,7 @@ class JavaPacketTransformTest {
 
         GlobalPos realSpawn = new GlobalPos(world, Vector3i.from(23_000_000, 64, -17_000_000));
         ClientboundSetDefaultSpawnPositionPacket packet =
-                new ClientboundSetDefaultSpawnPositionPacket(realSpawn);
+                new ClientboundSetDefaultSpawnPositionPacket(realSpawn, 0, 0);
         ClientboundSetDefaultSpawnPositionPacket shifted =
                 (ClientboundSetDefaultSpawnPositionPacket) transform.clientbound(packet);
 
