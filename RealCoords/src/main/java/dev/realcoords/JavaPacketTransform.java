@@ -11,6 +11,7 @@ import org.geysermc.mcprotocollib.protocol.data.game.entity.metadata.type.Object
 import org.geysermc.mcprotocollib.protocol.data.game.entity.metadata.GlobalPos;
 import net.kyori.adventure.key.Key;
 import org.geysermc.mcprotocollib.protocol.data.game.level.block.BlockChangeEntry;
+import org.geysermc.mcprotocollib.protocol.data.game.level.block.BlockEntityInfo;
 import org.geysermc.mcprotocollib.protocol.data.game.level.waypoint.ChunkWaypointData;
 import org.geysermc.mcprotocollib.protocol.data.game.level.waypoint.TrackedWaypoint;
 import org.geysermc.mcprotocollib.protocol.data.game.level.waypoint.Vec3iWaypointData;
@@ -151,8 +152,15 @@ final class JavaPacketTransform {
                     p.getX() - origin.offsetX(), p.getY(), p.getZ() - origin.offsetZ()));
         }
         if (packet instanceof ClientboundLevelChunkWithLightPacket chunk) {
+            BlockEntityInfo[] blockEntities = chunk.getBlockEntities().clone();
+            for (int i = 0; i < blockEntities.length; i++) {
+                BlockEntityInfo info = blockEntities[i];
+                blockEntities[i] = new BlockEntityInfo(info.getX(), info.getY(), info.getZ(), info.getType(),
+                        NbtShift.shift(info.getNbt(), origin.offsetX(), origin.offsetZ(), config));
+            }
             return chunk.withX(chunk.getX() - origin.offsetX() / 16)
-                    .withZ(chunk.getZ() - origin.offsetZ() / 16);
+                    .withZ(chunk.getZ() - origin.offsetZ() / 16)
+                    .withBlockEntities(blockEntities);
         }
         if (packet instanceof ClientboundForgetLevelChunkPacket chunk) {
             return chunk.withX(chunk.getX() - origin.offsetX() / 16)
