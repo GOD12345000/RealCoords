@@ -539,7 +539,8 @@ final class JavaSessionHook {
 
         private static boolean isWorldResetPacket(Packet packet) {
             String name = packet.getClass().getSimpleName();
-            return name.equals("ClientboundLoginPacket") || name.equals("ClientboundRespawnPacket");
+            return name.equals("ClientboundLoginPacket") || name.equals("ClientboundRespawnPacket")
+                    || name.equals("ClientboundPlayerPositionPacket");
         }
 
         private static boolean isReplaySensitive(Packet packet) {
