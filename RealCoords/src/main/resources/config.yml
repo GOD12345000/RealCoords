@@ -33,7 +33,7 @@ safety:
   debug-log: false
 
 chunk-cache:
-  # bedrock 模式換原點時要重送區塊，因此需保存已送出的區塊（原始真實座標版）；Java 階段 1 不使用此快取
+  # 保存原始 Java 區塊封包與後續更新，供後續浮動原點重設／重放使用；Java 模式目前只擷取，尚未啟用重放
   enabled: true
   # 以 deflate 壓縮保存，省記憶體、略增 CPU
   compress: true
@@ -43,7 +43,7 @@ chunk-cache:
   max-bytes: 33554432
   # 距離觸發值還有多遠（格）就開始保存區塊。必須大於伺服器視距（格）
   activate-margin: 1500
-  # 換原點後每個 tick 重送幾個區塊
+  # Bedrock 模式換原點後每個 tick 重送幾個區塊（Java 重放批次尚未接通）
   resend-per-tick: 24
   # 超出視距多少個區塊後從快取移除
   evict-margin-chunks: 4
