@@ -19,6 +19,7 @@ dependencies {
     compileOnly("org.geysermc.geyser:api:$geyserVersion")
     compileOnly("org.geysermc.geyser:core:$geyserVersion")
     implementation("org.yaml:snakeyaml:2.2")
+    testImplementation("org.junit.jupiter:junit-jupiter:5.11.4")
 }
 
 tasks.withType<JavaCompile> {
@@ -30,5 +31,7 @@ tasks.shadowJar {
     archiveClassifier.set("")
     relocate("org.yaml.snakeyaml", "dev.realcoords.libs.snakeyaml")
 }
+
+tasks.test { useJUnitPlatform() }
 
 tasks.build { dependsOn(tasks.shadowJar) }
