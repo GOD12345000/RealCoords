@@ -52,6 +52,17 @@ class JavaOriginStateTest {
     }
 
     @Test
+    void distantTeleportBackInsideResetRadiusClearsOrigin() {
+        state.absolutePosition(23_000_000, -17_000_000, 10);
+
+        JavaOriginState.Snapshot result = state.absolutePosition(1_000, -1_000, 10);
+
+        assertEquals(0, result.offsetX());
+        assertEquals(0, result.offsetZ());
+        assertTrue(result.changed());
+    }
+
+    @Test
     void respawnReevaluatesOriginOnNextAbsolutePosition() {
         state.absolutePosition(100_000, 100_000, 10);
         state.respawn(0);
