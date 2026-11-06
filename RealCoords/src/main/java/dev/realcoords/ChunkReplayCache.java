@@ -84,7 +84,7 @@ final class ChunkReplayCache {
         Objects.requireNonNull(type, "type");
         Objects.requireNonNull(payload, "payload");
         ChunkPos chunk = new ChunkPos(chunkX, chunkZ);
-        if (!chunks.containsKey(chunk) || payload.length + 24L > maxBytes) return false;
+        if (chunks.get(chunk) == null || payload.length + 24L > maxBytes) return false;
 
         LinkedHashMap<OverlayKey, StoredOverlay> perChunk =
                 overlays.computeIfAbsent(chunk, ignored -> new LinkedHashMap<>());
