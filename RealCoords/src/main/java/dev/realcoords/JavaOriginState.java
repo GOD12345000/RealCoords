@@ -95,6 +95,9 @@ final class JavaOriginState {
         if (!dim.enabled) {
             return 0;
         }
+        if (current != 0 && Math.abs(real) < dim.reset) {
+            return 0;
+        }
         if (Math.abs(real - current) > dim.trigger) {
             return aligned(real, dim.alignment);
         }
