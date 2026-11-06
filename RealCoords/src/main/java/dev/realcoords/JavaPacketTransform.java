@@ -54,7 +54,11 @@ final class JavaPacketTransform {
     private int viewDistanceChunks = 10;
 
     JavaPacketTransform(ShiftConfig config) {
-        this.origin = new JavaOriginState(config);
+        this(new JavaOriginState(config));
+    }
+
+    JavaPacketTransform(JavaOriginState origin) {
+        this.origin = origin;
     }
 
     Packet clientbound(Packet packet) {
