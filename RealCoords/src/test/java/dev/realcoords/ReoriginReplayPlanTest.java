@@ -37,6 +37,8 @@ class ReoriginReplayPlanTest {
         assertEquals(1, plan.nextEntityBatch(1).size());
         assertEquals(ReoriginReplayPlan.Stage.GLOBAL_STATE, plan.stage());
         assertEquals(global, plan.finishGlobalState());
+        assertEquals(ReoriginReplayPlan.Stage.LIVE_UPDATES, plan.stage());
+        assertTrue(plan.nextLiveUpdateBatch(8).isEmpty());
         assertTrue(plan.complete());
     }
 
@@ -48,7 +50,24 @@ class ReoriginReplayPlanTest {
         assertTrue(plan.nextEntityBatch(8).isEmpty());
         assertEquals(ReoriginReplayPlan.Stage.GLOBAL_STATE, plan.stage());
         assertTrue(plan.finishGlobalState().isEmpty());
+        assertEquals(ReoriginReplayPlan.Stage.LIVE_UPDATES, plan.stage());
+        assertTrue(plan.nextLiveUpdateBatch(8).isEmpty());
         assertTrue(plan.complete());
+    }
+
+    @Test
+    void buffersLiveUpdatesUntilAfterSnapshotReplayAndAbortsOnOverflow() {
+        LiveUpdateBuffer buffer = new LiveUpdateBuffer(100, 1);
+        ReoriginReplayPlan plan = new ReoriginReplayPlan(List.of(), List.of(), List.of(), buffer);
+        ClientboundGameEventPacket first = new ClientboundGameEventPacket(
+                org.geysermc.mcprotocollib.protocol.data.game.level.notify.GameEvent.START_RAINING, null);
+        ClientboundGameEventPacket second = new ClientboundGameEventPacket(
+                org.geysermc.mcprotocollib.protocol.data.game.level.notify.GameEvent.STOP_RAINING, null);
+        assertTrue(plan.bufferLiveUpdate(first));
+        assertFalse(plan.bufferLiveUpdate(second));
+        assertTrue(plan.aborted());
+        assertEquals(ReoriginReplayPlan.Stage.ABORTED, plan.stage());
+        assertEquals(0, plan.bufferedLiveUpdateCount());
     }
 
     @Test
