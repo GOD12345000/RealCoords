@@ -209,15 +209,17 @@ final class JavaSessionHook {
             if (timeout != null) timeout.cancel(false);
         }
 
-        int injectSyntheticResetRespawns(ChannelHandlerContext ctx, int reservedTeleportId) {
+        int injectSyntheticReset(ChannelHandlerContext ctx, int reservedTeleportId) {
             if (!ctx.executor().inEventLoop()) {
                 throw new IllegalStateException("Synthetic reset must run on the downstream channel event loop");
             }
             var respawns = transform.syntheticResetRespawns();
-            if (respawns.size() != 2 || !beginSyntheticReset(reservedTeleportId)) return 0;
+            var position = transform.syntheticPlayerPosition(reservedTeleportId);
+            if (respawns.size() != 2 || position == null || !beginSyntheticReset(reservedTeleportId)) return 0;
             try {
                 for (Packet respawn : respawns) ctx.fireChannelRead(respawn);
-                return respawns.size();
+                ctx.fireChannelRead(position);
+                return respawns.size() + 1;
             } catch (RuntimeException exception) {
                 abortSyntheticReset();
                 throw exception;
