@@ -43,6 +43,7 @@ import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.Clien
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundMovePlayerPosPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundMovePlayerPosRotPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.level.ServerboundMoveVehiclePacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.level.ServerboundAcceptTeleportationPacket;
 import org.cloudburstmc.math.vector.Vector3d;
 import org.junit.jupiter.api.Test;
 
@@ -121,6 +122,25 @@ class JavaPacketTransformTest {
         assertEquals(oldOffsetX, transform.offsetX());
         assertEquals(oldOffsetZ, transform.offsetZ());
         assertNull(transform.takeOriginChange());
+    }
+
+    @Test
+    void teleportAcknowledgementRestoresRealCoordinates() {
+        JavaPacketTransform transform = transformer();
+        transform.clientbound(new ClientboundPlayerPositionPacket(
+                1, 23_000_000, 70, -17_000_000, 0, 0, 0, 0, 0));
+
+        ServerboundAcceptTeleportationPacket acknowledgement =
+                new ServerboundAcceptTeleportationPacket(42, 125.5, 71.25, -84.75, 90, 15);
+        ServerboundAcceptTeleportationPacket restored = assertInstanceOf(
+                ServerboundAcceptTeleportationPacket.class, transform.serverbound(acknowledgement));
+
+        assertEquals(23_000_125.5, restored.getX());
+        assertEquals(71.25, restored.getY());
+        assertEquals(-17_000_084.75, restored.getZ());
+        assertEquals(42, restored.getId());
+        assertEquals(90, restored.getYRot());
+        assertEquals(15, restored.getXRot());
     }
 
     @Test
