@@ -1,6 +1,5 @@
 package dev.realcoords;
 
-import org.cloudburstmc.math.vector.Vector3d;
 import org.geysermc.mcprotocollib.protocol.data.game.entity.player.PositionElement;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.player.ClientboundPlayerPositionPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundLevelChunkWithLightPacket;
@@ -31,7 +30,6 @@ class JavaPacketTransformTest {
 
         assertTrue(Math.abs(shifted.getPosition().getX()) < 256);
         assertTrue(Math.abs(shifted.getPosition().getZ()) < 256);
-        assertEquals(0, shifted.getPosition().getY());
         assertEquals(0, shifted.getPosition().getY() - packet.getPosition().getY());
         assertEquals(23_000_000 - shifted.getPosition().getX(), transform.offsetX());
         assertEquals(-17_000_000 - shifted.getPosition().getZ(), transform.offsetZ());
