@@ -271,6 +271,7 @@ final class JavaPacketTransform {
             }
         }
         if (packet instanceof ClientboundChunksBiomesPacket biomes) {
+            cacheBiomes(biomes);
             List<ChunkBiomeData> shifted = new ArrayList<>();
             for (ChunkBiomeData entry : biomes.getChunkBiomeData()) {
                 shifted.add(new ChunkBiomeData(entry.getX() - origin.offsetX() / 16,
@@ -488,6 +489,22 @@ final class JavaPacketTransform {
     private void cacheBlockEntity(ClientboundBlockEntityDataPacket packet) {
         if (!cacheActive()) return;
         cacheOverlay(packet.getPosition(), ChunkReplayCache.OverlayType.BLOCK_ENTITY, packet);
+    }
+
+    private void cacheBiomes(ClientboundChunksBiomesPacket packet) {
+        if (!cacheActive()) return;
+        for (ChunkBiomeData entry : packet.getChunkBiomeData()) {
+            try {
+                ClientboundChunksBiomesPacket single = new ClientboundChunksBiomesPacket(List.of(entry));
+                ChunkReplayCache.BlockPos chunkPosition =
+                        new ChunkReplayCache.BlockPos(entry.getX() << 4, 0, entry.getZ() << 4);
+                chunkReplayCache.putOverlay(entry.getX(), entry.getZ(),
+                        ChunkReplayCache.OverlayType.CHUNK_BIOMES, chunkPosition,
+                        JavaPacketSnapshot.serialize(single));
+            } catch (RuntimeException exception) {
+                // Cache failure must never interrupt the live packet stream.
+            }
+        }
     }
 
     private void cacheLightUpdate(ClientboundLightUpdatePacket packet) {
