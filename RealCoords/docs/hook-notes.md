@@ -111,5 +111,5 @@ Java hook 安裝後應輸出：
 - `JavaOriginState` 以玩家連線為範圍保存各維度獨立原點；相對 X/Z 分量不平移，初始／重生後會等到兩軸都有絕對值才完成原點選擇。
 - `JavaBedrockAuxHook` 僅處理 ActionBar、原版座標 gamerule 與真實座標追蹤；不再做第二次座標轉換。
 - 玩家 serverbound 位置在加回偏移後會套用 `safety.max-serverbound-jump`，不合理的玩家移動封包會被丟棄。
-- Java 模式尚未涵蓋所有世界座標封包；尤其是 login／respawn 的 `lastDeathPos` 在新原點尚未由後續絕對玩家位置決定前無法正確平移。這類資料需額外設計，不可視為已支援。
+- Java 模式尚未涵蓋所有世界座標封包。login／respawn 的 `lastDeathPos` 會在後續玩家位置決定原點後更新 Geyser 內部 metadata；若死亡標記與玩家位置相距過遠，仍會保留一次性警告，因單一原點無法同時讓兩個遠距位置都接近 0。
 - CI 與單元測試不等同實機驗證；首包安裝時序、遊戲內封包覆蓋與行為仍待測試世界確認。
