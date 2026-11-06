@@ -160,9 +160,9 @@ class JavaOriginStateTest {
         int originalOffsetZ = state.offsetZ();
 
         JavaOriginState.Snapshot changed = null;
-        for (int step = 1; step <= 1000 && changed == null; step++) {
+        for (int step = 1; step <= 1300 && changed == null; step++) {
             assertTrue(state.acceptServerboundPosition(
-                    23_000_000 + step * 60.0, -17_000_000 + step * 60.0, 64.0));
+                    23_000_000 + step * 40.0, -17_000_000 + step * 40.0, 64.0));
             changed = state.takeMovementOriginChange();
         }
 
@@ -181,9 +181,9 @@ class JavaOriginStateTest {
         state.absolutePosition(23_000_000, -17_000_000, 10);
         int offsetX = state.offsetX();
         int offsetZ = state.offsetZ();
-        for (int step = 1; step <= 1000; step++) {
+        for (int step = 1; step <= 1300; step++) {
             assertTrue(state.acceptServerboundPosition(
-                    23_000_000 + step * 60.0, -17_000_000 + step * 60.0, 64.0, false));
+                    23_000_000 + step * 40.0, -17_000_000 + step * 40.0, 64.0, false));
             assertNull(state.takeMovementOriginChange());
         }
         assertEquals(offsetX, state.offsetX());
