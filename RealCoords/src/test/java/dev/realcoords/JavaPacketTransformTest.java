@@ -208,6 +208,26 @@ class JavaPacketTransformTest {
     }
 
     @Test
+    void deathPositionIsRebasedAfterInitialOriginSelection() {
+        JavaPacketTransform transform = transformer();
+        Key world = Key.key("minecraft:overworld");
+        GlobalPos death = new GlobalPos(world, Vector3i.from(23_000_100, 64, -16_999_900));
+        PlayerSpawnInfo spawnInfo = new PlayerSpawnInfo(0, world, 0L, GameMode.SURVIVAL,
+                null, false, false, death, 0, 63);
+        transform.clientbound(new ClientboundLoginPacket(1, false, new Key[]{world},
+                20, 10, 10, false, true, false, spawnInfo, true, true));
+
+        transform.clientbound(new ClientboundPlayerPositionPacket(
+                1, 23_000_000, 70, -17_000_000, 0, 0, 0, 0, 0));
+
+        JavaPacketTransform.DeathPositionUpdate update = transform.takeDeathPositionUpdate();
+        assertNotNull(update);
+        assertEquals(Vector3i.from(23_000_100 - transform.offsetX(), 64,
+                -16_999_900 - transform.offsetZ()), update.position().getPosition());
+        assertFalse(transform.takeDeathPositionWarning());
+    }
+
+    @Test
     void defaultSpawnPositionIsShiftedAfterOriginSelection() {
         JavaPacketTransform transform = transformer();
         Key world = Key.key("minecraft:overworld");
