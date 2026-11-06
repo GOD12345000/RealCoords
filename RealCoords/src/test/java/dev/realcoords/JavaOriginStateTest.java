@@ -1,0 +1,73 @@
+package dev.realcoords;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+class JavaOriginStateTest {
+    private ShiftConfig config;
+    private JavaOriginState state;
+
+    @BeforeEach
+    void setUp() {
+        config = new ShiftConfig();
+        ShiftConfig.Dim overworld = new ShiftConfig.Dim();
+        overworld.trigger = 50_000;
+        overworld.reset = 20_000;
+        overworld.alignment = 256;
+        config.dims.put(0, overworld);
+        state = new JavaOriginState(config);
+    }
+
+    @Test
+    void firstAbsolutePositionAtFarCoordinatesSelectsAlignedOrigin() {
+        JavaOriginState.Snapshot result = state.absolutePosition(-23_000_000, 17_000_000, 10);
+
+        assertTrue(result.changed());
+        assertEquals(Math.round(-23_000_000.0 / 256) * 256, result.offsetX());
+        assertEquals(Math.round(17_000_000.0 / 256) * 256, result.offsetZ());
+    }
+
+    @Test
+    void ordinaryMovementDoesNotChangeOrigin() {
+        JavaOriginState.Snapshot first = state.absolutePosition(100_000, 100_000, 10);
+        JavaOriginState.Snapshot next = state.absolutePosition(100_100, 100_100, 10);
+
+        assertTrue(first.changed());
+        assertFalse(next.changed());
+        assertEquals(first.offsetX(), next.offsetX());
+        assertEquals(first.offsetZ(), next.offsetZ());
+    }
+
+    @Test
+    void farTeleportChangesOriginBeforePositionIsForwarded() {
+        state.absolutePosition(100_000, 100_000, 10);
+
+        JavaOriginState.Snapshot result = state.absolutePosition(23_000_000, -17_000_000, 10);
+
+        assertTrue(result.changed());
+        assertEquals(Math.round(23_000_000.0 / 256) * 256, result.offsetX());
+        assertEquals(Math.round(-17_000_000.0 / 256) * 256, result.offsetZ());
+    }
+
+    @Test
+    void respawnReevaluatesOriginOnNextAbsolutePosition() {
+        state.absolutePosition(100_000, 100_000, 10);
+        state.respawn(0);
+
+        JavaOriginState.Snapshot result = state.absolutePosition(-23_000_000, 17_000_000, 10);
+
+        assertTrue(result.changed());
+        assertEquals(Math.round(-23_000_000.0 / 256) * 256, result.offsetX());
+        assertEquals(Math.round(17_000_000.0 / 256) * 256, result.offsetZ());
+    }
+
+    @Test
+    void alignmentIsAlwaysAChunkMultiple() {
+        JavaOriginState.Snapshot result = state.absolutePosition(23_000_001, -17_000_003, 10);
+
+        assertEquals(0, Math.floorMod(result.offsetX(), 16));
+        assertEquals(0, Math.floorMod(result.offsetZ(), 16));
+    }
+}
