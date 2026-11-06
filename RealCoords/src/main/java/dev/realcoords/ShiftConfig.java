@@ -98,7 +98,7 @@ final class ShiftConfig {
         }
 
         Map<String, Object> sf = sec(root, "safety");
-        c.maxJump = dbl(sf, "max-serverbound-jump", 64.0);
+        c.maxJump = Math.max(1.0, dbl(sf, "max-serverbound-jump", 64.0));
         c.guardIntervalMs = num(sf, "correction-interval-ticks", 10) * 50;
         c.debug = bool(sf, "debug-log", false);
 
