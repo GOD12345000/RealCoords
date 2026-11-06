@@ -4,6 +4,9 @@ import org.cloudburstmc.math.vector.Vector3d;
 import org.cloudburstmc.math.vector.Vector3i;
 import org.geysermc.mcprotocollib.network.packet.Packet;
 import org.geysermc.mcprotocollib.protocol.data.game.entity.player.PositionElement;
+import org.geysermc.mcprotocollib.protocol.data.game.entity.player.PlayerSpawnInfo;
+import org.geysermc.mcprotocollib.protocol.data.game.entity.metadata.GlobalPos;
+import net.kyori.adventure.key.Key;
 import org.geysermc.mcprotocollib.protocol.data.game.level.block.BlockChangeEntry;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.ClientboundLoginPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.ClientboundRespawnPacket;
@@ -28,6 +31,7 @@ import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.Clien
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundLightUpdatePacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundSectionBlocksUpdatePacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundSetChunkCacheCenterPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundSetDefaultSpawnPositionPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.border.ClientboundSetBorderCenterPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.border.ClientboundInitializeBorderPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundMovePlayerPosPacket;
@@ -52,6 +56,7 @@ import java.util.List;
 final class JavaPacketTransform {
     private final JavaOriginState origin;
     private int viewDistanceChunks = 10;
+    private Key currentWorld;
 
     JavaPacketTransform(ShiftConfig config) {
         this(new JavaOriginState(config));
@@ -64,13 +69,15 @@ final class JavaPacketTransform {
     Packet clientbound(Packet packet) {
         if (packet instanceof ClientboundLoginPacket login) {
             origin.login();
-            origin.respawn(dimensionId(login.getCommonPlayerSpawnInfo().getWorldName().asString()));
+            currentWorld = login.getCommonPlayerSpawnInfo().getWorldName();
+            origin.respawn(dimensionId(currentWorld.asString()));
             viewDistanceChunks = login.getViewDistance();
-            return packet;
+            return login.withCommonPlayerSpawnInfo(shiftSpawnInfo(login.getCommonPlayerSpawnInfo()));
         }
         if (packet instanceof ClientboundRespawnPacket respawn) {
-            origin.respawn(dimensionId(respawn.getCommonPlayerSpawnInfo().getWorldName().asString()));
-            return packet;
+            currentWorld = respawn.getCommonPlayerSpawnInfo().getWorldName();
+            origin.respawn(dimensionId(currentWorld.asString()));
+            return respawn.withCommonPlayerSpawnInfo(shiftSpawnInfo(respawn.getCommonPlayerSpawnInfo()));
         }
         if (packet instanceof ClientboundPlayerPositionPacket position) {
             boolean relativeX = position.getRelatives().contains(PositionElement.X);
@@ -126,6 +133,9 @@ final class JavaPacketTransform {
         if (packet instanceof ClientboundForgetLevelChunkPacket chunk) {
             return chunk.withX(chunk.getX() - origin.offsetX() / 16)
                     .withZ(chunk.getZ() - origin.offsetZ() / 16);
+        }
+        if (packet instanceof ClientboundSetDefaultSpawnPositionPacket spawn) {
+            return spawn.withGlobalPos(shiftGlobalPos(spawn.getGlobalPos()));
         }
         if (packet instanceof ClientboundSetChunkCacheCenterPacket center) {
             return center.withChunkX(center.getChunkX() - origin.offsetX() / 16)
@@ -238,10 +248,16 @@ final class JavaPacketTransform {
                     p.getZ() + origin.offsetZ()));
         }
         if (packet instanceof ServerboundMovePlayerPosPacket move) {
-            return move.withX(move.getX() + origin.offsetX()).withZ(move.getZ() + origin.offsetZ());
+            double realX = move.getX() + origin.offsetX();
+            double realZ = move.getZ() + origin.offsetZ();
+            if (!origin.acceptServerboundPosition(realX, realZ, 64.0)) return null;
+            return move.withX(realX).withZ(realZ);
         }
         if (packet instanceof ServerboundMovePlayerPosRotPacket move) {
-            return move.withX(move.getX() + origin.offsetX()).withZ(move.getZ() + origin.offsetZ());
+            double realX = move.getX() + origin.offsetX();
+            double realZ = move.getZ() + origin.offsetZ();
+            if (!origin.acceptServerboundPosition(realX, realZ, 64.0)) return null;
+            return move.withX(realX).withZ(realZ);
         }
         return packet;
     }
@@ -252,6 +268,21 @@ final class JavaPacketTransform {
 
     int offsetZ() {
         return origin.offsetZ();
+    }
+
+    private PlayerSpawnInfo shiftSpawnInfo(PlayerSpawnInfo info) {
+        GlobalPos death = info.getLastDeathPos();
+        GlobalPos shiftedDeath = shiftGlobalPos(death);
+        return new PlayerSpawnInfo(info.getDimension(), info.getWorldName(), info.getHashedSeed(),
+                info.getGameMode(), info.getPreviousGamemode(), info.isDebug(), info.isFlat(),
+                shiftedDeath, info.getPortalCooldown(), info.getSeaLevel());
+    }
+
+    private GlobalPos shiftGlobalPos(GlobalPos pos) {
+        if (pos == null || currentWorld == null || !currentWorld.equals(pos.getDimension())) return pos;
+        Vector3i p = pos.getPosition();
+        return new GlobalPos(pos.getDimension(),
+                Vector3i.from(p.getX() - origin.offsetX(), p.getY(), p.getZ() - origin.offsetZ()));
     }
 
     private static int dimensionId(String worldName) {
