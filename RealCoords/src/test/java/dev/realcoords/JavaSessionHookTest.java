@@ -17,7 +17,7 @@ class JavaSessionHookTest {
         EmbeddedChannel channel = new EmbeddedChannel(handler);
 
         assertTrue(handler.beginSyntheticReset(987654));
-        assertTrue(channel.writeOutbound(ServerboundPlayerLoadedPacket.INSTANCE));
+        assertFalse(channel.writeOutbound(ServerboundPlayerLoadedPacket.INSTANCE));
         assertNull(channel.readOutbound());
 
         ServerboundAcceptTeleportationPacket ordinaryAck =
@@ -27,7 +27,7 @@ class JavaSessionHookTest {
 
         ServerboundAcceptTeleportationPacket syntheticAck =
                 new ServerboundAcceptTeleportationPacket(987654, 0, 64, 0, 0, 0);
-        assertTrue(channel.writeOutbound(syntheticAck));
+        assertFalse(channel.writeOutbound(syntheticAck));
         assertNull(channel.readOutbound());
 
         // Once both synthetic responses have been consumed, normal packets pass.
