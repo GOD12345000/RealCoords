@@ -669,7 +669,11 @@ final class JavaPacketTransform {
     }
 
     ClientboundPlayerPositionPacket syntheticPlayerPosition(int reservedTeleportId) {
-        if (!hasPlayerPosition || !origin.hasPosition()) return null;
+        // The origin state is authoritative for whether a real position is known.
+        // Serverbound movement can establish it before any clientbound absolute
+        // position packet has populated the transform's presentation flag.
+        if (!origin.hasPosition()) return null;
+        hasPlayerPosition = true;
         return new ClientboundPlayerPositionPacket(reservedTeleportId,
                 origin.realX() - origin.offsetX(), lastPlayerY,
                 origin.realZ() - origin.offsetZ(), 0, 0, 0, lastPlayerYaw, lastPlayerPitch);
