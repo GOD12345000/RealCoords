@@ -84,7 +84,7 @@ class JavaSessionHookTest {
     }
 
     @Test
-    void abortRestoresNormalOutboundPacketFlow() {
+    void abortClosesSessionInsteadOfAllowingLateSyntheticAcknowledgementsToLeak() {
         ShiftConfig config = new ShiftConfig();
         config.dims.put(0, new ShiftConfig.Dim());
         JavaSessionHook.JavaPacketTransformHandler handler =
@@ -94,10 +94,7 @@ class JavaSessionHookTest {
         assertTrue(handler.beginSyntheticReset(100));
         handler.abortSyntheticReset();
 
-        ServerboundAcceptTeleportationPacket ack =
-                new ServerboundAcceptTeleportationPacket(100, 0, 64, 0, 0, 0);
-        assertTrue(channel.writeOutbound(ack));
-        assertSame(ack, channel.readOutbound());
+        assertFalse(channel.isOpen());
         channel.finishAndReleaseAll();
     }
 }
