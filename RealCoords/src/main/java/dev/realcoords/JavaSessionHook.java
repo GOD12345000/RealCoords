@@ -150,6 +150,7 @@ final class JavaSessionHook {
         private final ExtensionLogger log;
         private final AtomicBoolean firstClientbound = new AtomicBoolean();
         private final AtomicBoolean firstServerbound = new AtomicBoolean();
+        private long lastGuardWarningMs;
 
         private final JavaPacketTransform transform;
 
@@ -181,7 +182,11 @@ final class JavaSessionHook {
                     super.write(ctx, transformed, promise);
                 } else {
                     promise.setSuccess();
-                    log.warning("[RealCoords] dropped an implausible Java serverbound player movement packet");
+                    long now = System.currentTimeMillis();
+                    if (now - lastGuardWarningMs >= 5000) {
+                        lastGuardWarningMs = now;
+                        log.warning("[RealCoords] dropped an implausible Java serverbound player movement packet");
+                    }
                 }
                 return;
             }
