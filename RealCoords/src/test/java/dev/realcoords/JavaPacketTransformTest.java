@@ -2,6 +2,9 @@ package dev.realcoords;
 
 import io.netty.channel.embedded.EmbeddedChannel;
 import net.kyori.adventure.key.Key;
+import org.geysermc.mcprotocollib.protocol.data.game.entity.metadata.GlobalPos;
+import org.geysermc.mcprotocollib.protocol.data.game.entity.player.GameMode;
+import org.geysermc.mcprotocollib.protocol.data.game.entity.player.PlayerSpawnInfo;
 import org.cloudburstmc.math.vector.Vector3i;
 import org.cloudburstmc.nbt.NbtMap;
 import org.geysermc.mcprotocollib.network.packet.Packet;
@@ -19,9 +22,11 @@ import org.geysermc.mcprotocollib.protocol.data.game.level.waypoint.Vec3iWaypoin
 import org.geysermc.mcprotocollib.protocol.data.game.level.waypoint.WaypointOperation;
 import org.geysermc.mcprotocollib.protocol.data.game.level.notify.RainStrengthValue;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.player.ClientboundPlayerPositionPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.ClientboundLoginPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundSetEntityDataPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundLevelChunkWithLightPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundBlockUpdatePacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundSetDefaultSpawnPositionPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundUseItemOnPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundGameEventPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundTrackedWaypointPacket;
@@ -183,6 +188,30 @@ class JavaPacketTransformTest {
         assertEquals(0.5f, restored.getCursorX());
         assertEquals(1.0f, restored.getCursorY());
         assertEquals(0.5f, restored.getCursorZ());
+    }
+
+    @Test
+    void defaultSpawnPositionIsShiftedAfterOriginSelection() {
+        JavaPacketTransform transform = transformer();
+        Key world = Key.key("minecraft:overworld");
+        PlayerSpawnInfo spawnInfo = new PlayerSpawnInfo(0, world, 0L, GameMode.SURVIVAL,
+                null, false, false, null, 0, 63);
+        ClientboundLoginPacket login = new ClientboundLoginPacket(1, false, new Key[]{world},
+                20, 10, 10, false, true, false, spawnInfo, true, true);
+        transform.clientbound(login);
+
+        ClientboundPlayerPositionPacket initial = new ClientboundPlayerPositionPacket(
+                1, 23_000_000, 70, -17_000_000, 0, 0, 0, 0, 0);
+        transform.clientbound(initial);
+
+        GlobalPos realSpawn = new GlobalPos(world, Vector3i.from(23_000_000, 64, -17_000_000));
+        ClientboundSetDefaultSpawnPositionPacket packet =
+                new ClientboundSetDefaultSpawnPositionPacket(realSpawn);
+        ClientboundSetDefaultSpawnPositionPacket shifted =
+                (ClientboundSetDefaultSpawnPositionPacket) transform.clientbound(packet);
+
+        assertEquals(Vector3i.from(-transform.offsetX(), 64, -transform.offsetZ()),
+                shifted.getGlobalPos().getPosition());
     }
 
     @Test
