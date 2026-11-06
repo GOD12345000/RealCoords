@@ -169,8 +169,6 @@ final class EntityReplayCache {
             result.add(new ReplayPacket(entityId, kind, packet.getValue().type(),
                     packet.getKey(), packet.getValue().payload()));
         }
-        }
-        return List.copyOf(result);
     }
 
     synchronized int size() { return entities.size(); }
