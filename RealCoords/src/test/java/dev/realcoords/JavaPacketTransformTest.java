@@ -67,6 +67,51 @@ class JavaPacketTransformTest {
     }
 
     @Test
+    void cachedChunkReplayRestoresBaseThenShiftedBlockOverlayWithoutRecaching() {
+        ShiftConfig config = new ShiftConfig();
+        config.dims.put(0, new ShiftConfig.Dim());
+        config.cacheEnabled = true;
+        config.cacheCompress = false;
+        JavaPacketTransform transform = new JavaPacketTransform(config);
+
+        ClientboundPlayerPositionPacket initial = new ClientboundPlayerPositionPacket(
+                1, 23_000_000, 70, -17_000_000, 0, 0, 0, 0, 0);
+        transform.clientbound(new ClientboundLoginPacket(1, false, new Key[]{Key.key("minecraft:overworld")},
+                20, 10, 10, false, true, false,
+                new PlayerSpawnInfo(0, Key.key("minecraft:overworld"), 0L, GameMode.SURVIVAL,
+                        null, false, false, null, 0, 63), true, true));
+        transform.clientbound(initial);
+
+        int realChunkX = 23_000_000 / 16;
+        int realChunkZ = -17_000_000 / 16;
+        ClientboundLevelChunkWithLightPacket base = new ClientboundLevelChunkWithLightPacket(
+                realChunkX, realChunkZ, new byte[]{1, 2, 3}, Map.of(), new
+                org.geysermc.mcprotocollib.protocol.data.game.level.block.BlockEntityInfo[0],
+                new org.geysermc.mcprotocollib.protocol.data.game.level.LightUpdateData(
+                        new BitSet(), new BitSet(), new BitSet(), new BitSet(), List.of(), List.of()));
+        transform.clientbound(base);
+
+        Vector3i realBlock = Vector3i.from(23_000_004, 65, -16_999_996);
+        transform.clientbound(new ClientboundBlockUpdatePacket(new BlockChangeEntry(realBlock, 123)));
+
+        List<Packet> replay = transform.replayCachedChunks(realChunkX, realChunkZ, 1);
+        assertEquals(2, replay.size());
+        ClientboundLevelChunkWithLightPacket replayedChunk =
+                assertInstanceOf(ClientboundLevelChunkWithLightPacket.class, replay.get(0));
+        ClientboundBlockUpdatePacket replayedBlock =
+                assertInstanceOf(ClientboundBlockUpdatePacket.class, replay.get(1));
+
+        assertEquals(realChunkX - transform.offsetX() / 16, replayedChunk.getX());
+        assertEquals(realChunkZ - transform.offsetZ() / 16, replayedChunk.getZ());
+        assertEquals(Vector3i.from(realBlock.getX() - transform.offsetX(), realBlock.getY(),
+                realBlock.getZ() - transform.offsetZ()), replayedBlock.getEntry().getPosition());
+
+        // Replaying must not mutate or duplicate the source cache.
+        assertEquals(1, transform.cachedChunkCount());
+        assertEquals(2, transform.replayCachedChunks(realChunkX, realChunkZ, 1).size());
+    }
+
+    @Test
     void embeddedChannelReplacesClientboundPacketAndRestoresServerboundMovement() {
         ShiftConfig config = new ShiftConfig();
         config.dims.put(0, new ShiftConfig.Dim());
