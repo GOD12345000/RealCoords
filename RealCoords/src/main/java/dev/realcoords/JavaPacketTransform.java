@@ -3,6 +3,7 @@ package dev.realcoords;
 import org.cloudburstmc.math.vector.Vector3d;
 import org.cloudburstmc.math.vector.Vector3i;
 import org.geysermc.mcprotocollib.network.packet.Packet;
+import org.geysermc.mcprotocollib.protocol.codec.MinecraftPacket;
 import org.geysermc.mcprotocollib.protocol.data.game.entity.player.PositionElement;
 import org.geysermc.mcprotocollib.protocol.data.game.entity.player.PlayerSpawnInfo;
 import org.geysermc.mcprotocollib.protocol.data.game.entity.metadata.EntityMetadata;
@@ -88,6 +89,7 @@ final class JavaPacketTransform {
     private int viewDistanceChunks = 10;
     private final double maxServerboundJump;
     private final ShiftConfig config;
+    private final ChunkReplayCache chunkReplayCache;
     private Key currentWorld;
     private JavaOriginState.Snapshot pendingOriginChange;
     private GlobalPos lastDeathPosition;
@@ -116,10 +118,13 @@ final class JavaPacketTransform {
         this.origin = origin;
         this.maxServerboundJump = maxServerboundJump;
         this.config = config;
+        this.chunkReplayCache = config != null && config.cacheEnabled
+                ? new ChunkReplayCache(config.cacheMaxChunks, config.cacheMaxBytes, config.cacheCompress) : null;
     }
 
     Packet clientbound(Packet packet) {
         if (packet instanceof ClientboundLoginPacket login) {
+            if (chunkReplayCache != null) chunkReplayCache.clear();
             origin.login();
             currentWorld = login.getCommonPlayerSpawnInfo().getWorldName();
             lastDeathPosition = login.getCommonPlayerSpawnInfo().getLastDeathPos();
@@ -129,6 +134,7 @@ final class JavaPacketTransform {
             return login.withCommonPlayerSpawnInfo(shiftSpawnInfo(login.getCommonPlayerSpawnInfo()));
         }
         if (packet instanceof ClientboundRespawnPacket respawn) {
+            if (chunkReplayCache != null) chunkReplayCache.clear();
             currentWorld = respawn.getCommonPlayerSpawnInfo().getWorldName();
             lastDeathPosition = respawn.getCommonPlayerSpawnInfo().getLastDeathPos();
             hasLastDeathPosition = lastDeathPosition != null;
@@ -198,6 +204,7 @@ final class JavaPacketTransform {
                     p.getX() - origin.offsetX(), p.getY(), p.getZ() - origin.offsetZ()));
         }
         if (packet instanceof ClientboundLevelChunkWithLightPacket chunk) {
+            cacheChunk(chunk);
             BlockEntityInfo[] blockEntities = chunk.getBlockEntities().clone();
             for (int i = 0; i < blockEntities.length; i++) {
                 BlockEntityInfo info = blockEntities[i];
@@ -209,6 +216,7 @@ final class JavaPacketTransform {
                     .withBlockEntities(blockEntities);
         }
         if (packet instanceof ClientboundForgetLevelChunkPacket chunk) {
+            if (chunkReplayCache != null) chunkReplayCache.remove(chunk.getX(), chunk.getZ());
             return chunk.withX(chunk.getX() - origin.offsetX() / 16)
                     .withZ(chunk.getZ() - origin.offsetZ() / 16);
         }
@@ -220,10 +228,12 @@ final class JavaPacketTransform {
                     .withChunkZ(center.getChunkZ() - origin.offsetZ() / 16);
         }
         if (packet instanceof ClientboundLightUpdatePacket light) {
+            cacheLightUpdate(light);
             return light.withX(light.getX() - origin.offsetX() / 16)
                     .withZ(light.getZ() - origin.offsetZ() / 16);
         }
         if (packet instanceof ClientboundBlockUpdatePacket block) {
+            cacheBlockUpdate(block.getEntry());
             BlockChangeEntry entry = block.getEntry();
             Vector3i p = entry.getPosition();
             return block.withEntry(new BlockChangeEntry(
@@ -231,6 +241,7 @@ final class JavaPacketTransform {
                     entry.getBlock()));
         }
         if (packet instanceof ClientboundSectionBlocksUpdatePacket section) {
+            for (BlockChangeEntry entry : section.getEntries()) cacheBlockUpdate(entry);
             int chunkX = section.getChunkX() - origin.offsetX() / 16;
             int chunkZ = section.getChunkZ() - origin.offsetZ() / 16;
             BlockChangeEntry[] entries = section.getEntries().clone();
@@ -339,6 +350,7 @@ final class JavaPacketTransform {
             return metadata.withMetadata(shiftMetadata(metadata.getMetadata()));
         }
         if (packet instanceof ClientboundBlockEntityDataPacket blockEntity) {
+            cacheBlockEntity(blockEntity);
             Vector3i p = blockEntity.getPosition();
             return blockEntity.withPosition(Vector3i.from(p.getX() - origin.offsetX(), p.getY(),
                     p.getZ() - origin.offsetZ()))
@@ -444,6 +456,59 @@ final class JavaPacketTransform {
         if (!deathPositionUpdatePending) return null;
         deathPositionUpdatePending = false;
         return new DeathPositionUpdate(pendingDeathPositionUpdate);
+    }
+
+    List<ChunkReplayCache.ReplayChunk> cachedChunks(int centerChunkX, int centerChunkZ, int limit) {
+        return chunkReplayCache == null ? List.of()
+                : chunkReplayCache.snapshotNearestFirst(centerChunkX, centerChunkZ, limit);
+    }
+
+    private boolean cacheActive() {
+        return chunkReplayCache != null && (origin.offsetX() != 0 || origin.offsetZ() != 0);
+    }
+
+    private void cacheChunk(ClientboundLevelChunkWithLightPacket chunk) {
+        if (!cacheActive()) return;
+        try {
+            chunkReplayCache.put(chunk.getX(), chunk.getZ(), JavaPacketSnapshot.serialize(chunk));
+        } catch (RuntimeException exception) {
+            // Cache failure must never interrupt the live packet stream.
+        }
+    }
+
+    private void cacheBlockUpdate(BlockChangeEntry entry) {
+        if (!cacheActive()) return;
+        Vector3i position = entry.getPosition();
+        ClientboundBlockUpdatePacket snapshot = new ClientboundBlockUpdatePacket(entry);
+        cacheOverlay(position, ChunkReplayCache.OverlayType.BLOCK_UPDATE, snapshot);
+    }
+
+    private void cacheBlockEntity(ClientboundBlockEntityDataPacket packet) {
+        if (!cacheActive()) return;
+        cacheOverlay(packet.getPosition(), ChunkReplayCache.OverlayType.BLOCK_ENTITY, packet);
+    }
+
+    private void cacheLightUpdate(ClientboundLightUpdatePacket packet) {
+        if (!cacheActive()) return;
+        ChunkReplayCache.BlockPos chunkPosition =
+                new ChunkReplayCache.BlockPos(packet.getX() << 4, 0, packet.getZ() << 4);
+        try {
+            chunkReplayCache.putOverlay(packet.getX(), packet.getZ(),
+                    ChunkReplayCache.OverlayType.LIGHT_UPDATE, chunkPosition,
+                    JavaPacketSnapshot.serialize(packet));
+        } catch (RuntimeException exception) {
+            // Cache failure must never interrupt the live packet stream.
+        }
+    }
+
+    private void cacheOverlay(Vector3i position, ChunkReplayCache.OverlayType type, MinecraftPacket packet) {
+        try {
+            chunkReplayCache.putOverlay(position.getX() >> 4, position.getZ() >> 4, type,
+                    new ChunkReplayCache.BlockPos(position.getX(), position.getY(), position.getZ()),
+                    JavaPacketSnapshot.serialize(packet));
+        } catch (RuntimeException exception) {
+            // Cache failure must never interrupt the live packet stream.
+        }
     }
 
     JavaOriginState.Snapshot takeOriginChange() {
