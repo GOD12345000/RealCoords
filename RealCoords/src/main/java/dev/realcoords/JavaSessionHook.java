@@ -247,7 +247,8 @@ final class JavaSessionHook {
             if (activeReplayPlan != null) throw new IllegalStateException("A replay plan is already active");
             JavaPacketTransform.ReplaySnapshot snapshot = transform.prepareReplaySnapshot(
                     centerChunkX, centerChunkZ, centerX, centerZ, entityRadius);
-            activeReplayPlan = new ReoriginReplayPlan(snapshot.chunks(), snapshot.entities(), snapshot.globalState());
+            activeReplayPlan = new ReoriginReplayPlan(snapshot.chunks(), snapshot.entities(), snapshot.globalState(),
+                    new LiveUpdateBuffer(transform.liveUpdateBudgetBytes(), 4096));
             return activeReplayPlan;
         }
 
