@@ -29,6 +29,8 @@ import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.play
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.ClientboundLoginPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.ClientboundRespawnPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundSetEntityDataPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundAddEntityPacket;
+import org.geysermc.mcprotocollib.protocol.data.game.entity.type.EntityType;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundLevelChunkWithLightPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundBlockUpdatePacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundSetDefaultSpawnPositionPacket;
@@ -85,6 +87,38 @@ class JavaPacketTransformTest {
         assertTrue(temporary.isKeepAttributeModifiers());
         assertTrue(restored.isKeepMetadata());
         assertTrue(restored.isKeepAttributeModifiers());
+    }
+
+    @Test
+    void cachedEntityReplaySendsSpawnBeforeMetadataAndShiftsSpawnPosition() {
+        ShiftConfig config = new ShiftConfig();
+        config.dims.put(0, new ShiftConfig.Dim());
+        JavaPacketTransform transform = new JavaPacketTransform(config);
+        Key world = Key.key("minecraft:overworld");
+        PlayerSpawnInfo spawnInfo = new PlayerSpawnInfo(0, world, 0L, GameMode.SURVIVAL,
+                null, false, false, null, 0, 63);
+        transform.clientbound(new ClientboundLoginPacket(1, false, new Key[]{world},
+                20, 10, 10, false, true, false, spawnInfo, true, true));
+        transform.clientbound(new ClientboundPlayerPositionPacket(
+                1, 23_000_000, 70, -17_000_000, 0, 0, 0, 0, 0));
+
+        ClientboundAddEntityPacket entity = new ClientboundAddEntityPacket(
+                99, UUID.randomUUID(), EntityType.ZOMBIE, 23_000_012, 64, -16_999_988,
+                0, 0, 0);
+        ClientboundSetEntityDataPacket metadata = new ClientboundSetEntityDataPacket(
+                99, new EntityMetadata[0]);
+        transform.clientbound(entity);
+        transform.clientbound(metadata);
+
+        List<Packet> replay = transform.replayCachedEntities(23_000_000, -17_000_000, 256, 8);
+        assertEquals(2, replay.size());
+        ClientboundAddEntityPacket replayedSpawn =
+                assertInstanceOf(ClientboundAddEntityPacket.class, replay.get(0));
+        assertInstanceOf(ClientboundSetEntityDataPacket.class, replay.get(1));
+        assertEquals(23_000_012 - transform.offsetX(), replayedSpawn.getX());
+        assertEquals(-16_999_988 - transform.offsetZ(), replayedSpawn.getZ());
+        assertEquals(1, transform.cachedEntityCount());
+        assertEquals(2, transform.replayCachedEntities(23_000_000, -17_000_000, 256, 8).size());
     }
 
     @Test
