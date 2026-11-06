@@ -77,6 +77,13 @@ final class ChunkReplayCache {
         return chunks.containsKey(key);
     }
 
+    /** Returns a defensive payload copy and marks this entry as recently used. */
+    synchronized ReplayChunk get(int chunkX, int chunkZ) {
+        ChunkPos key = new ChunkPos(chunkX, chunkZ);
+        StoredChunk stored = chunks.get(key);
+        return stored == null ? null : new ReplayChunk(chunkX, chunkZ, decode(stored));
+    }
+
     synchronized boolean remove(int chunkX, int chunkZ) {
         StoredChunk removed = chunks.remove(new ChunkPos(chunkX, chunkZ));
         if (removed == null) return false;
