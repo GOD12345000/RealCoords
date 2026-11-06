@@ -7,6 +7,7 @@ import org.geysermc.mcprotocollib.protocol.data.game.entity.player.PlayerSpawnIn
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.ClientboundLoginPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.player.ClientboundPlayerPositionPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.ServerboundPlayerLoadedPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundMovePlayerPosPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.ClientboundRespawnPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundGameEventPacket;
 import org.geysermc.mcprotocollib.protocol.data.game.level.notify.GameEvent;
@@ -83,10 +84,14 @@ class JavaSessionHookTest {
                 temporary.getCommonPlayerSpawnInfo().getWorldName().asString());
         assertEquals(world, restored.getCommonPlayerSpawnInfo().getWorldName());
 
+        assertFalse(channel.writeOutbound(new ServerboundMovePlayerPosPacket(
+                true, false, 10, 70, 10))); // movement is frozen during reset
         assertFalse(channel.writeOutbound(ServerboundPlayerLoadedPacket.INSTANCE));
         assertFalse(channel.writeOutbound(ServerboundPlayerLoadedPacket.INSTANCE));
         assertFalse(channel.writeOutbound(new ServerboundAcceptTeleportationPacket(
                 777777, 0, 70, 0, 0, 0)));
+        assertFalse(channel.writeOutbound(new ServerboundMovePlayerPosPacket(
+                true, false, 10, 70, 10))); // movement remains frozen while replay is active
         assertFalse(handler.beginSyntheticReset(777778)); // a replay transaction is still active
         channel.close();
         channel.finishAndReleaseAll();
