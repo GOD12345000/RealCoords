@@ -101,7 +101,7 @@ final class JavaSessionHook {
                     }
                 });
                 if (session.isConnected() && finished.compareAndSet(false, true)) {
-                    installOnChannel(session, log);
+                    installOnChannel(session, config, log);
                 }
             }
         }, 0, 50, TimeUnit.MILLISECONDS);
