@@ -65,9 +65,8 @@ import java.util.List;
 /**
  * Phase-one Java protocol coordinate conversion.
  *
- * Only packet classes explicitly handled here are rewritten. Unsupported absolute
- * coordinate packets are intentionally not guessed; they are tracked by the
- * JavaSessionHook probe and will be added in follow-up coverage.
+ * Only packet classes explicitly handled here are rewritten. Other packet types
+ * pass through unchanged and must be reviewed before they are considered supported.
  */
 final class JavaPacketTransform {
     private final JavaOriginState origin;
