@@ -571,8 +571,13 @@ final class JavaSessionHook {
                     promise.setSuccess();
                     return;
                 }
-                if ((syntheticResetGate.active() || syntheticResetPendingReplay || activeReplayPlan != null)
-                        && isMovementPacket(packet)) {
+                if (isMovementPacket(packet)
+                        && (syntheticResetGate.active() || syntheticResetPendingReplay)) {
+                    promise.setSuccess();
+                    return;
+                }
+                if (isMovementPacket(packet) && activeReplayPlan != null) {
+                    transform.observeMovementDuringReplay(packet);
                     promise.setSuccess();
                     return;
                 }
