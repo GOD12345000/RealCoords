@@ -18,8 +18,6 @@ final class SyntheticResetGate {
     private int teleportId;
 
     boolean begin(int reservedTeleportId) {
-        if (active) return false;
-        active = true;
         return begin(reservedTeleportId, 1);
     }
 
