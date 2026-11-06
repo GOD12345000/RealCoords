@@ -146,7 +146,7 @@ final class JavaSessionHook {
         }
     }
 
-    private static final class JavaPacketTransformHandler extends ChannelDuplexHandler {
+    static final class JavaPacketTransformHandler extends ChannelDuplexHandler {
         private final ExtensionLogger log;
         private final AtomicBoolean firstClientbound = new AtomicBoolean();
         private final AtomicBoolean firstServerbound = new AtomicBoolean();
@@ -154,7 +154,7 @@ final class JavaSessionHook {
 
         private final JavaPacketTransform transform;
 
-        private JavaPacketTransformHandler(JavaPacketTransform transform, ExtensionLogger log) {
+        JavaPacketTransformHandler(JavaPacketTransform transform, ExtensionLogger log) {
             this.transform = transform;
             this.log = log;
         }
@@ -162,7 +162,7 @@ final class JavaSessionHook {
         @Override
         public void channelRead(ChannelHandlerContext ctx, Object message) throws Exception {
             if (message instanceof Packet packet && firstClientbound.compareAndSet(false, true)) {
-                log.info("[RealCoords] Java hook first clientbound packet: " + packet.getClass().getName());
+                if (log != null) log.info("[RealCoords] Java hook first clientbound packet: " + packet.getClass().getName());
             }
             if (message instanceof Packet packet) {
                 super.channelRead(ctx, transform.clientbound(packet));
@@ -174,7 +174,7 @@ final class JavaSessionHook {
         @Override
         public void write(ChannelHandlerContext ctx, Object message, ChannelPromise promise) throws Exception {
             if (message instanceof Packet packet && firstServerbound.compareAndSet(false, true)) {
-                log.info("[RealCoords] Java hook first serverbound packet: " + packet.getClass().getName());
+                if (log != null) log.info("[RealCoords] Java hook first serverbound packet: " + packet.getClass().getName());
             }
             if (message instanceof Packet packet) {
                 Packet transformed = transform.serverbound(packet);
@@ -185,7 +185,7 @@ final class JavaSessionHook {
                     long now = System.currentTimeMillis();
                     if (now - lastGuardWarningMs >= 5000) {
                         lastGuardWarningMs = now;
-                        log.warning("[RealCoords] dropped an implausible Java serverbound player movement packet");
+                        if (log != null) log.warning("[RealCoords] dropped an implausible Java serverbound player movement packet");
                     }
                 }
                 return;
