@@ -73,8 +73,8 @@ final class JavaOriginState {
                               boolean absoluteX, boolean absoluteZ) {
         int oldX = offsetX;
         int oldZ = offsetZ;
-        double nextX = absoluteX ? x : (hasPosition ? lastX + x : x);
-        double nextZ = absoluteZ ? z : (hasPosition ? lastZ + z : z);
+        double nextX = absoluteX ? x : (needsAbsoluteX ? lastX : lastX + x);
+        double nextZ = absoluteZ ? z : (needsAbsoluteZ ? lastZ : lastZ + z);
 
         if (resetPending || !hasPosition) {
             if (needsAbsoluteX && absoluteX) {
@@ -94,9 +94,9 @@ final class JavaOriginState {
             }
         }
 
-        lastX = nextX;
-        lastZ = nextZ;
-        hasPosition = true;
+        if (absoluteX || !needsAbsoluteX) lastX = nextX;
+        if (absoluteZ || !needsAbsoluteZ) lastZ = nextZ;
+        hasPosition = !needsAbsoluteX && !needsAbsoluteZ;
         publishOffsets();
         offsetsByDimension.put(dimension, new Offsets(offsetX, offsetZ));
         return new Snapshot(offsetX, offsetZ, oldX != offsetX || oldZ != offsetZ, true);
@@ -109,6 +109,9 @@ final class JavaOriginState {
         lastX = x;
         lastZ = z;
         hasPosition = true;
+        needsAbsoluteX = false;
+        needsAbsoluteZ = false;
+        resetPending = false;
         return true;
     }
 
