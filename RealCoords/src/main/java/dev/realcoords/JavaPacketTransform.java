@@ -27,6 +27,11 @@ import org.geysermc.mcprotocollib.protocol.data.game.level.particle.Particle;
 import org.geysermc.mcprotocollib.protocol.data.game.level.particle.VibrationParticleData;
 import org.geysermc.mcprotocollib.protocol.data.game.level.particle.positionsource.BlockPositionSource;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.ClientboundLoginPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.ClientboundChangeDifficultyPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundSetTimePacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundGameEventPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.border.ClientboundSetBorderSizePacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.border.ClientboundSetBorderLerpSizePacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.ClientboundUpdateAdvancementsPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.ClientboundRespawnPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundAddEntityPacket;
@@ -98,6 +103,7 @@ final class JavaPacketTransform {
     private final ShiftConfig config;
     private final ChunkReplayCache chunkReplayCache;
     private final EntityReplayCache entityReplayCache;
+    private final GlobalStateReplayCache globalStateReplayCache;
     private boolean replayingCachedPackets;
     private Key currentWorld;
     private PlayerSpawnInfo currentSpawnInfo;
@@ -136,12 +142,15 @@ final class JavaPacketTransform {
                 ? new ChunkReplayCache(config.cacheMaxChunks, config.cacheMaxBytes, config.cacheCompress) : null;
         this.entityReplayCache = config != null && config.cacheEnabled
                 ? new EntityReplayCache(512, Math.max(1L << 20, config.cacheMaxBytes / 4)) : null;
+        this.globalStateReplayCache = config != null && config.cacheEnabled
+                ? new GlobalStateReplayCache(Math.max(256L << 10, config.cacheMaxBytes / 16)) : null;
     }
 
     Packet clientbound(Packet packet) {
         if (packet instanceof ClientboundLoginPacket login) {
             if (chunkReplayCache != null) chunkReplayCache.clear();
             if (entityReplayCache != null) entityReplayCache.clear();
+            if (globalStateReplayCache != null) globalStateReplayCache.clear();
             origin.login();
             currentSpawnInfo = login.getCommonPlayerSpawnInfo();
             currentWorld = currentSpawnInfo.getWorldName();
@@ -154,6 +163,7 @@ final class JavaPacketTransform {
         if (packet instanceof ClientboundRespawnPacket respawn) {
             if (chunkReplayCache != null) chunkReplayCache.clear();
             if (entityReplayCache != null) entityReplayCache.clear();
+            if (globalStateReplayCache != null) globalStateReplayCache.clear();
             currentSpawnInfo = respawn.getCommonPlayerSpawnInfo();
             currentWorld = currentSpawnInfo.getWorldName();
             lastDeathPosition = respawn.getCommonPlayerSpawnInfo().getLastDeathPos();
@@ -293,7 +303,28 @@ final class JavaPacketTransform {
             return chunk.withX(chunk.getX() - origin.offsetX() / 16)
                     .withZ(chunk.getZ() - origin.offsetZ() / 16);
         }
+        if (packet instanceof ClientboundChangeDifficultyPacket difficulty) {
+            cacheGlobal(GlobalStateReplayCache.Key.DIFFICULTY, difficulty);
+            return packet;
+        }
+        if (packet instanceof ClientboundSetTimePacket time) {
+            cacheGlobal(GlobalStateReplayCache.Key.TIME, time);
+            return packet;
+        }
+        if (packet instanceof ClientboundGameEventPacket event) {
+            GlobalStateReplayCache.Key key = switch (event.getNotification()) {
+                case CHANGE_GAME_MODE -> GlobalStateReplayCache.Key.GAME_MODE;
+                case START_RAINING -> GlobalStateReplayCache.Key.RAIN_START;
+                case STOP_RAINING -> GlobalStateReplayCache.Key.RAIN_STOP;
+                case RAIN_LEVEL_CHANGE -> GlobalStateReplayCache.Key.RAIN_LEVEL;
+                case THUNDER_LEVEL_CHANGE -> GlobalStateReplayCache.Key.THUNDER_LEVEL;
+                default -> null;
+            };
+            if (key != null) cacheGlobal(key, event);
+            return packet;
+        }
         if (packet instanceof ClientboundSetDefaultSpawnPositionPacket spawn) {
+            cacheGlobal(GlobalStateReplayCache.Key.DEFAULT_SPAWN, spawn);
             return spawn.withGlobalPos(shiftGlobalPos(spawn.getGlobalPos()));
         }
         if (packet instanceof ClientboundSetChunkCacheCenterPacket center) {
@@ -443,10 +474,20 @@ final class JavaPacketTransform {
                     p.getZ() - origin.offsetZ()));
         }
         if (packet instanceof ClientboundInitializeBorderPacket border) {
+            cacheGlobal(GlobalStateReplayCache.Key.BORDER_INITIALIZE, border);
             return border.withNewCenterX(border.getNewCenterX() - origin.offsetX())
                     .withNewCenterZ(border.getNewCenterZ() - origin.offsetZ());
         }
+        if (packet instanceof ClientboundSetBorderLerpSizePacket border) {
+            cacheGlobal(GlobalStateReplayCache.Key.BORDER_LERP_SIZE, border);
+            return packet;
+        }
+        if (packet instanceof ClientboundSetBorderSizePacket border) {
+            cacheGlobal(GlobalStateReplayCache.Key.BORDER_SIZE, border);
+            return packet;
+        }
         if (packet instanceof ClientboundSetBorderCenterPacket border) {
+            cacheGlobal(GlobalStateReplayCache.Key.BORDER_CENTER, border);
             return border.withNewCenterX(border.getNewCenterX() - origin.offsetX())
                     .withNewCenterZ(border.getNewCenterZ() - origin.offsetZ());
         }
@@ -576,6 +617,30 @@ final class JavaPacketTransform {
 
     int cachedEntityCount() {
         return entityReplayCache == null ? 0 : entityReplayCache.size();
+    }
+
+    List<Packet> replayGlobalState() {
+        if (globalStateReplayCache == null) return List.of();
+        List<Packet> replay = new ArrayList<>();
+        replayingCachedPackets = true;
+        try {
+            for (GlobalStateReplayCache.Snapshot snapshot : globalStateReplayCache.snapshot()) {
+                MinecraftPacket packet = JavaPacketSnapshot.deserialize(snapshot.packetType(), snapshot.payload());
+                replay.add(clientbound(packet));
+            }
+        } finally {
+            replayingCachedPackets = false;
+        }
+        return List.copyOf(replay);
+    }
+
+    private void cacheGlobal(GlobalStateReplayCache.Key key, MinecraftPacket packet) {
+        if (globalStateReplayCache == null || replayingCachedPackets) return;
+        try {
+            globalStateReplayCache.put(key, packet.getClass(), JavaPacketSnapshot.serialize(packet));
+        } catch (RuntimeException exception) {
+            // Cache failures must not interrupt the live packet stream.
+        }
     }
 
     List<Packet> replayCachedEntities(double centerX, double centerZ, double radiusBlocks, int limit) {
