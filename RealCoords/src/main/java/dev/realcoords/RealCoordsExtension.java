@@ -14,7 +14,7 @@ public class RealCoordsExtension implements Extension {
         try {
             cfg = ShiftConfig.load(this.dataFolder(), getClass(), this.logger());
             this.logger().info("[RealCoords] 已載入設定。origin-shift=" + cfg.enabled
-                    + ", actionbar=" + cfg.abEnabled + ", chunk-cache=" + cfg.cacheEnabled);
+                    + ", layer=" + cfg.layer + ", actionbar=" + cfg.abEnabled + ", chunk-cache=" + cfg.cacheEnabled);
         } catch (Exception e) {
             this.logger().error("[RealCoords] 載入 config.yml 失敗，擴充停用", e);
         }
