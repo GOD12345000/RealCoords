@@ -37,7 +37,7 @@ final class JavaSessionHook {
     private JavaSessionHook() {
     }
 
-    static void install(GeyserSession geyserSession, ExtensionLogger log) {
+    static void install(GeyserSession geyserSession, ShiftConfig config, ExtensionLogger log) {
         AtomicBoolean finished = new AtomicBoolean();
         AtomicBoolean listenerRegistered = new AtomicBoolean();
         AtomicReference<ScheduledFuture<?>> pollerReference = new AtomicReference<>();
@@ -57,7 +57,7 @@ final class JavaSessionHook {
             Session session = downstream.getSession();
             if (session.isConnected()) {
                 if (finished.compareAndSet(false, true)) {
-                    installOnChannel(session, log);
+                    installOnChannel(session, config, log);
                 }
                 ScheduledFuture<?> scheduled = pollerReference.get();
                 if (scheduled != null) scheduled.cancel(false);
@@ -116,7 +116,7 @@ final class JavaSessionHook {
         }, DISCOVERY_TIMEOUT_SECONDS, TimeUnit.SECONDS);
     }
 
-    private static void installOnChannel(Session session, ExtensionLogger log) {
+    private static void installOnChannel(Session session, ShiftConfig config, ExtensionLogger log) {
         Channel channel;
         try {
             channel = session.getChannel();
@@ -139,7 +139,7 @@ final class JavaSessionHook {
                 return;
             }
 
-            JavaPacketProbe probe = new JavaPacketProbe(log);
+            JavaPacketTransformHandler probe = new JavaPacketTransformHandler(new JavaPacketTransform(config), log);
             pipeline.addBefore(NetworkConstants.MANAGER_NAME, HANDLER_NAME, probe);
             log.info("[RealCoords] Java hook probe installed; pipeline=" + pipeline.names());
         };
@@ -154,7 +154,7 @@ final class JavaSessionHook {
         }
     }
 
-    private static final class JavaPacketProbe extends ChannelDuplexHandler {
+    private static final class JavaPacketTransformHandler extends ChannelDuplexHandler {
         private final ExtensionLogger log;
         private final AtomicBoolean firstClientbound = new AtomicBoolean();
         private final AtomicBoolean firstServerbound = new AtomicBoolean();
@@ -168,6 +168,10 @@ final class JavaSessionHook {
             if (message instanceof Packet packet && firstClientbound.compareAndSet(false, true)) {
                 log.info("[RealCoords] Java hook first clientbound packet: " + packet.getClass().getName());
             }
+            if (message instanceof Packet packet) {
+                super.channelRead(ctx, transform.clientbound(packet));
+                return;
+            }
             super.channelRead(ctx, message);
         }
 
@@ -175,6 +179,10 @@ final class JavaSessionHook {
         public void write(ChannelHandlerContext ctx, Object message, ChannelPromise promise) throws Exception {
             if (message instanceof Packet packet && firstServerbound.compareAndSet(false, true)) {
                 log.info("[RealCoords] Java hook first serverbound packet: " + packet.getClass().getName());
+            }
+            if (message instanceof Packet packet) {
+                super.write(ctx, transform.serverbound(packet), promise);
+                return;
             }
             super.write(ctx, message, promise);
         }
