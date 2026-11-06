@@ -243,47 +243,72 @@ final class JavaSessionHook {
         }
 
         int replayChunkBatch(ChannelHandlerContext ctx, ReoriginReplayPlan plan, int limit) {
-            if (!ctx.executor().inEventLoop()) {
-                throw new IllegalStateException("Chunk replay must run on the downstream channel event loop");
+            requireReplayEventLoop(ctx, plan);
+            try {
+                var packets = transform.replayChunkBatch(plan.nextChunkBatch(limit));
+                for (Packet packet : packets) ctx.fireChannelRead(packet);
+                return packets.size();
+            } catch (RuntimeException exception) {
+                failReplay(ctx, plan, exception);
+                return 0;
             }
-            var packets = transform.replayChunkBatch(plan.nextChunkBatch(limit));
-            for (Packet packet : packets) ctx.fireChannelRead(packet);
-            return packets.size();
         }
 
         int replayEntityBatch(ChannelHandlerContext ctx, ReoriginReplayPlan plan, int limit) {
-            if (!ctx.executor().inEventLoop()) {
-                throw new IllegalStateException("Entity replay must run on the downstream channel event loop");
+            requireReplayEventLoop(ctx, plan);
+            try {
+                var packets = transform.replayEntityBatch(plan.nextEntityBatch(limit));
+                for (Packet packet : packets) ctx.fireChannelRead(packet);
+                return packets.size();
+            } catch (RuntimeException exception) {
+                failReplay(ctx, plan, exception);
+                return 0;
             }
-            var packets = transform.replayEntityBatch(plan.nextEntityBatch(limit));
-            for (Packet packet : packets) ctx.fireChannelRead(packet);
-            return packets.size();
         }
 
         int replayGlobalState(ChannelHandlerContext ctx, ReoriginReplayPlan plan) {
-            if (!ctx.executor().inEventLoop()) {
-                throw new IllegalStateException("Global state replay must run on the downstream channel event loop");
+            requireReplayEventLoop(ctx, plan);
+            try {
+                var packets = transform.replayGlobalBatch(plan.finishGlobalState());
+                for (Packet packet : packets) ctx.fireChannelRead(packet);
+                return packets.size();
+            } catch (RuntimeException exception) {
+                failReplay(ctx, plan, exception);
+                return 0;
             }
-            var packets = transform.replayGlobalBatch(plan.finishGlobalState());
-            for (Packet packet : packets) ctx.fireChannelRead(packet);
-            return packets.size();
         }
 
         int replayLiveUpdates(ChannelHandlerContext ctx, ReoriginReplayPlan plan, int limit) {
+            requireReplayEventLoop(ctx, plan);
+            try {
+                var buffered = plan.nextLiveUpdateBatch(limit);
+                var packets = transform.replayBufferedUpdates(buffered);
+                for (Packet packet : packets) ctx.fireChannelRead(packet);
+                if (plan.aborted()) {
+                    activeReplayPlan = null;
+                    ctx.close();
+                } else if (plan.complete()) {
+                    activeReplayPlan = null;
+                }
+                return packets.size();
+            } catch (RuntimeException exception) {
+                failReplay(ctx, plan, exception);
+                return 0;
+            }
+        }
+
+        private void requireReplayEventLoop(ChannelHandlerContext ctx, ReoriginReplayPlan plan) {
             if (!ctx.executor().inEventLoop()) {
-                throw new IllegalStateException("Live update replay must run on the downstream channel event loop");
+                throw new IllegalStateException("Replay must run on the downstream channel event loop");
             }
             if (plan != activeReplayPlan) throw new IllegalStateException("Replay plan is not active on this session");
-            var buffered = plan.nextLiveUpdateBatch(limit);
-            var packets = transform.replayBufferedUpdates(buffered);
-            for (Packet packet : packets) ctx.fireChannelRead(packet);
-            if (plan.aborted()) {
-                activeReplayPlan = null;
-                ctx.close();
-            } else if (plan.complete()) {
-                activeReplayPlan = null;
-            }
-            return packets.size();
+        }
+
+        private void failReplay(ChannelHandlerContext ctx, ReoriginReplayPlan plan, RuntimeException exception) {
+            if (log != null) log.error("[RealCoords] replay failed; closing downstream session to avoid partial world state", exception);
+            plan.abort();
+            if (plan == activeReplayPlan) activeReplayPlan = null;
+            ctx.close();
         }
 
         void abortReplayPlan(ChannelHandlerContext ctx, ReoriginReplayPlan plan) {
