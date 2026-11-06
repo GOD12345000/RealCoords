@@ -291,7 +291,12 @@ final class JavaPacketTransform {
             return packet;
         }
         if (packet instanceof ClientboundUpdateAttributesPacket attributes) {
-            cacheEntity(attributes.getEntityId(), EntityReplayCache.Kind.ATTRIBUTES, 0, attributes);
+            for (var attribute : attributes.getAttributes()) {
+                ClientboundUpdateAttributesPacket single =
+                        new ClientboundUpdateAttributesPacket(attributes.getEntityId(), List.of(attribute));
+                cacheEntity(attributes.getEntityId(), EntityReplayCache.Kind.ATTRIBUTES,
+                        attribute.getType().getId(), single);
+            }
             return packet;
         }
         if (packet instanceof ClientboundUpdateMobEffectPacket effect) {
@@ -305,7 +310,7 @@ final class JavaPacketTransform {
             return packet;
         }
         if (packet instanceof ClientboundSetEntityLinkPacket link) {
-            cacheEntity(link.getEntityId(), EntityReplayCache.Kind.LINK, link.getAttachedToId(), link);
+            cacheEntity(link.getEntityId(), EntityReplayCache.Kind.LINK, 0, link);
             return packet;
         }
         if (packet instanceof ClientboundSetPassengersPacket passengers) {
@@ -509,7 +514,13 @@ final class JavaPacketTransform {
             return inventory.withContents(shiftItemStack(inventory.getContents()));
         }
         if (packet instanceof ClientboundSetEntityDataPacket metadata) {
-            cacheEntity(metadata.getEntityId(), EntityReplayCache.Kind.METADATA, 0, metadata);
+            if (metadata.getMetadata() != null) {
+                for (EntityMetadata<?, ?> entry : metadata.getMetadata()) {
+                    ClientboundSetEntityDataPacket single =
+                            new ClientboundSetEntityDataPacket(metadata.getEntityId(), new EntityMetadata[]{entry});
+                    cacheEntity(metadata.getEntityId(), EntityReplayCache.Kind.METADATA, entry.getId(), single);
+                }
+            }
             return metadata.withMetadata(shiftMetadata(metadata.getMetadata()));
         }
         if (packet instanceof ClientboundBlockEntityDataPacket blockEntity) {
