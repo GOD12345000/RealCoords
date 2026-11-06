@@ -70,6 +70,31 @@ class JavaPacketTransformTest {
     }
 
     @Test
+    void implausibleServerboundMovementIsRejected() {
+        JavaPacketTransform transform = transformer();
+        ClientboundPlayerPositionPacket initial = new ClientboundPlayerPositionPacket(
+                1, 23_000_000, 70, -17_000_000, 0, 0, 0, 0, 0);
+        transform.clientbound(initial);
+
+        ServerboundMovePlayerPosPacket tooFar = new ServerboundMovePlayerPosPacket(
+                true, false, 1000, 70, 1000);
+        assertNull(transform.serverbound(tooFar));
+    }
+
+    @Test
+    void ordinaryServerboundMovementPassesSafetyGate() {
+        JavaPacketTransform transform = transformer();
+        ClientboundPlayerPositionPacket initial = new ClientboundPlayerPositionPacket(
+                1, 23_000_000, 70, -17_000_000, 0, 0, 0, 0, 0);
+        ClientboundPlayerPositionPacket local =
+                (ClientboundPlayerPositionPacket) transform.clientbound(initial);
+
+        ServerboundMovePlayerPosPacket movement = new ServerboundMovePlayerPosPacket(
+                true, false, local.getPosition().getX() + 3, 70, local.getPosition().getZ() + 4);
+        assertNotNull(transform.serverbound(movement));
+    }
+
+    @Test
     void chunkCoordinatesUseAlignedChunkOffset() {
         JavaPacketTransform transform = transformer();
         ClientboundPlayerPositionPacket initial = new ClientboundPlayerPositionPacket(
