@@ -115,6 +115,18 @@ final class JavaOriginState {
         return true;
     }
 
+    double realX() {
+        return lastX;
+    }
+
+    double realZ() {
+        return lastZ;
+    }
+
+    boolean hasPosition() {
+        return hasPosition;
+    }
+
     Offsets offsets() {
         return publishedOffsets;
     }
