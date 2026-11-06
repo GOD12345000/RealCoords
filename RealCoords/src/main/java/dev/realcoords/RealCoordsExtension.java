@@ -24,10 +24,13 @@ public class RealCoordsExtension implements Extension {
     public void onLogin(SessionLoginEvent event) {
         ShiftConfig c = cfg;
         if (c == null || !c.enabled) return;
+        GeyserSession session = (GeyserSession) event.connection();
         try {
-            SessionHook.install((GeyserSession) event.connection(), c, this.logger());
+            // Keep the existing Bedrock hook active while the Java hook is only a non-mutating probe.
+            SessionHook.install(session, c, this.logger());
+            JavaSessionHook.install(session, this.logger());
         } catch (Throwable t) {
-            this.logger().error("[RealCoords] 無法掛上封包轉換器（該玩家將不套用偏移）", t);
+            this.logger().error("[RealCoords] 無法啟動封包 hook（該玩家將不套用偏移）", t);
         }
     }
 }
