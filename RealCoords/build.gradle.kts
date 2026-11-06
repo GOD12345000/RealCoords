@@ -20,6 +20,7 @@ dependencies {
     compileOnly("org.geysermc.geyser:core:$geyserVersion")
     implementation("org.yaml:snakeyaml:2.2")
     testImplementation("org.junit.jupiter:junit-jupiter:5.11.4")
+    testCompileOnly("org.geysermc.geyser:core:$geyserVersion")
 }
 
 tasks.withType<JavaCompile> {
