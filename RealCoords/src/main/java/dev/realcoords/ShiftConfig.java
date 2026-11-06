@@ -12,6 +12,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /** 所有可調參數都在這裡，從 config.yml 讀入，沒有任何寫死的距離。 */
@@ -25,6 +26,10 @@ final class ShiftConfig {
     String layer = "java";
     int cooldownMs = 5000, ackTimeoutMs = 3000, guardIntervalMs = 500;
     int recenterOnReload = 2048;
+    int transitionTimeoutTicks = 100;
+    int transitionCooldownTicks = 600;
+    int transitionGraceTicks = 20;
+    String walkFallback = "none";
     double ackTolerance = 4.0, maxJump = 64.0;
 
     boolean cacheEnabled = true, cacheCompress = true;
@@ -50,8 +55,6 @@ final class ShiftConfig {
         return d != null ? d : dims.get(0);
     }
 
-    // ---- 載入 ----
-
     static ShiftConfig load(Path dir, Class<?> anchor, ExtensionLogger log) throws IOException {
         Files.createDirectories(dir);
         Path file = dir.resolve("config.yml");
@@ -73,11 +76,20 @@ final class ShiftConfig {
         ShiftConfig c = new ShiftConfig();
         Map<String, Object> os = sec(root, "origin-shift");
         c.enabled = bool(os, "enabled", true);
-        c.layer = str(os, "layer", "java").trim().toLowerCase(java.util.Locale.ROOT);
+        c.layer = str(os, "layer", "java").trim().toLowerCase(Locale.ROOT);
         c.shiftWhileMoving = bool(os, "shift-while-moving", false);
         if (!c.layer.equals("java") && !c.layer.equals("bedrock")) {
             warning.accept("[RealCoords] origin-shift.layer 無效，改用 java");
             c.layer = "java";
+        }
+
+        c.transitionTimeoutTicks = Math.max(1, num(os, "transition-timeout-ticks", 100));
+        c.transitionCooldownTicks = Math.max(0, num(os, "transition-cooldown-ticks", 600));
+        c.transitionGraceTicks = Math.max(0, num(os, "transition-grace-ticks", 20));
+        c.walkFallback = str(os, "walk-fallback", "none").trim().toLowerCase(Locale.ROOT);
+        if (!List.of("none", "kick", "reorigin").contains(c.walkFallback)) {
+            warning.accept("[RealCoords] origin-shift.walk-fallback 無效，改用 none");
+            c.walkFallback = "none";
         }
 
         Dim base = new Dim();
@@ -149,8 +161,6 @@ final class ShiftConfig {
         if (f.size() == 4) c.facing = f.toArray(new String[0]);
         return c;
     }
-
-    // ---- 小工具 ----
 
     private static int align(int a) {
         return Math.max(16, (a / 16) * 16);
