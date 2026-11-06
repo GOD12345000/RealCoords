@@ -30,6 +30,8 @@ final class JavaOriginState {
     private boolean resetPending = true;
     private boolean needsAbsoluteX = true;
     private boolean needsAbsoluteZ = true;
+    private long lastMovementOriginShiftMs;
+    private Snapshot pendingMovementOriginChange;
 
     JavaOriginState(ShiftConfig config) {
         this.config = config;
@@ -44,6 +46,8 @@ final class JavaOriginState {
         resetPending = true;
         needsAbsoluteX = true;
         needsAbsoluteZ = true;
+        lastMovementOriginShiftMs = 0;
+        pendingMovementOriginChange = null;
         publishOffsets();
     }
 
@@ -58,6 +62,8 @@ final class JavaOriginState {
         resetPending = true;
         needsAbsoluteX = true;
         needsAbsoluteZ = true;
+        lastMovementOriginShiftMs = 0;
+        pendingMovementOriginChange = null;
     }
 
     /**
@@ -112,7 +118,29 @@ final class JavaOriginState {
         needsAbsoluteX = false;
         needsAbsoluteZ = false;
         resetPending = false;
+
+        if (config.shiftWhileMoving) {
+            long now = System.currentTimeMillis();
+            if (now - lastMovementOriginShiftMs >= Math.max(0, config.cooldownMs)) {
+                int oldX = offsetX;
+                int oldZ = offsetZ;
+                offsetX = nextOffset(offsetX, x);
+                offsetZ = nextOffset(offsetZ, z);
+                if (oldX != offsetX || oldZ != offsetZ) {
+                    publishOffsets();
+                    dimensionOffsets.put(dimension, new Offsets(offsetX, offsetZ));
+                    pendingMovementOriginChange = new Snapshot(offsetX, offsetZ, true, true);
+                    lastMovementOriginShiftMs = now;
+                }
+            }
+        }
         return true;
+    }
+
+    Snapshot takeMovementOriginChange() {
+        Snapshot snapshot = pendingMovementOriginChange;
+        pendingMovementOriginChange = null;
+        return snapshot;
     }
 
     double realX() {
