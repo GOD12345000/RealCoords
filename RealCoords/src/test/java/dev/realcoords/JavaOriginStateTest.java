@@ -221,12 +221,26 @@ class JavaOriginStateTest {
 
 
     @Test
-    void freeReloadRecentersAtTheSmallerPrecisionThreshold() {
+    void loginUsesRecenterOnReloadRatherThanTriggerDistance() {
         JavaOriginState.Snapshot result = state.absolutePosition(60_000, -62_000, 10);
 
         assertTrue(result.changed());
         assertTrue(Math.abs(60_000 - result.offsetX()) <= 128);
         assertTrue(Math.abs(-62_000 - result.offsetZ()) <= 128);
+    }
+
+    @Test
+    void distantServerTeleportUsesRecenterOnReloadRatherThanTriggerDistance() {
+        JavaOriginState.Snapshot login = state.absolutePosition(60_000, 60_000, 10);
+        assertTrue(login.changed());
+        int loginOffset = login.offsetX();
+
+        JavaOriginState.Snapshot teleport = state.absolutePosition(63_000, 63_000, 10);
+
+        assertTrue(teleport.changed());
+        assertNotEquals(loginOffset, teleport.offsetX());
+        assertTrue(Math.abs(63_000 - teleport.offsetX()) <= 128);
+        assertTrue(Math.abs(63_000 - teleport.offsetZ()) <= 128);
     }
 
     @Test
@@ -246,6 +260,45 @@ class JavaOriginStateTest {
         assertTrue(result.changed());
         assertTrue(Math.abs(110_000 - result.offsetX()) <= 128);
         assertTrue(Math.abs(112_000 - result.offsetZ()) <= 128);
+    }
+
+    @Test
+    void productionDefaultsDoNotReoriginAtSixtyThousandBlocks() {
+        ShiftConfig productionDefaults = new ShiftConfig();
+        productionDefaults.dims.put(0, new ShiftConfig.Dim());
+        productionDefaults.shiftWhileMoving = true;
+        productionDefaults.cooldownMs = 0;
+        JavaOriginState productionState = new JavaOriginState(productionDefaults);
+        productionState.absolutePosition(0, 0, 10);
+
+        for (int step = 1; step <= 1_500; step++) {
+            assertTrue(productionState.acceptServerboundPosition(step * 40.0, step * 40.0, 64.0));
+            assertNull(productionState.takeMovementOriginChange(),
+                    "production trigger-distance must not fire at 60,000 blocks");
+        }
+        assertEquals(0, productionState.offsetX());
+        assertEquals(0, productionState.offsetZ());
+    }
+
+    @Test
+    void productionDefaultsReoriginOnlyAfterOneHundredThousandBlocks() {
+        ShiftConfig productionDefaults = new ShiftConfig();
+        productionDefaults.dims.put(0, new ShiftConfig.Dim());
+        productionDefaults.shiftWhileMoving = true;
+        productionDefaults.cooldownMs = 0;
+        JavaOriginState productionState = new JavaOriginState(productionDefaults);
+        productionState.absolutePosition(0, 0, 10);
+
+        JavaOriginState.Snapshot change = null;
+        for (int step = 1; step <= 2_501 && change == null; step++) {
+            assertTrue(productionState.acceptServerboundPosition(step * 40.0, step * 40.0, 64.0));
+            change = productionState.takeMovementOriginChange();
+        }
+
+        assertNotNull(change, "production trigger-distance must fire after 100,000 blocks");
+        assertTrue(change.changed());
+        assertTrue(Math.abs(100_040 - change.offsetX()) <= 128);
+        assertTrue(Math.abs(100_040 - change.offsetZ()) <= 128);
     }
 
     @Test
