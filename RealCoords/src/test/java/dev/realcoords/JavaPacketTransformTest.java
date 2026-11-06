@@ -2,6 +2,7 @@ package dev.realcoords;
 
 import io.netty.channel.embedded.EmbeddedChannel;
 import org.cloudburstmc.math.vector.Vector3i;
+import org.cloudburstmc.nbt.NbtMap;
 import org.geysermc.mcprotocollib.network.packet.Packet;
 import org.geysermc.mcprotocollib.protocol.data.game.entity.player.PositionElement;
 import org.geysermc.mcprotocollib.protocol.data.game.entity.player.Hand;
@@ -223,7 +224,12 @@ class JavaPacketTransformTest {
 
         ClientboundLevelChunkWithLightPacket chunk = new ClientboundLevelChunkWithLightPacket(
                 23_000_000 / 16, -17_000_000 / 16, new byte[0], Map.of(),
-                new org.geysermc.mcprotocollib.protocol.data.game.level.block.BlockEntityInfo[0],
+                new org.geysermc.mcprotocollib.protocol.data.game.level.block.BlockEntityInfo[]{
+                        new org.geysermc.mcprotocollib.protocol.data.game.level.block.BlockEntityInfo(
+                                1, 64, 2,
+                                org.geysermc.mcprotocollib.protocol.data.game.level.block.BlockEntityType.CHEST,
+                                NbtMap.builder().putInt("x", 23_000_000).putInt("z", -17_000_000).build())
+                },
                 new org.geysermc.mcprotocollib.protocol.data.game.level.LightUpdateData(
                         new BitSet(), new BitSet(), new BitSet(), new BitSet(), List.of(), List.of()));
 
@@ -231,5 +237,7 @@ class JavaPacketTransformTest {
                 (ClientboundLevelChunkWithLightPacket) transform.clientbound(chunk);
         assertEquals(chunk.getX() - transform.offsetX() / 16, shifted.getX());
         assertEquals(chunk.getZ() - transform.offsetZ() / 16, shifted.getZ());
+        assertEquals(23_000_000 - transform.offsetX(), shifted.getBlockEntities()[0].getNbt().getInt("x"));
+        assertEquals(-17_000_000 - transform.offsetZ(), shifted.getBlockEntities()[0].getNbt().getInt("z"));
     }
 }
