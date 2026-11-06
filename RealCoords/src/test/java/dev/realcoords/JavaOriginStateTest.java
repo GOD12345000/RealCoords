@@ -133,6 +133,24 @@ class JavaOriginStateTest {
     }
 
     @Test
+    void eachDimensionRetainsItsOwnOriginOffset() {
+        JavaOriginState.Snapshot overworld = state.absolutePosition(23_000_000, -17_000_000, 10);
+
+        state.respawn(1);
+        assertEquals(0, state.offsetX());
+        assertEquals(0, state.offsetZ());
+        JavaOriginState.Snapshot nether = state.absolutePosition(7_000_000, 8_000_000, 10);
+
+        state.respawn(0);
+        assertEquals(overworld.offsetX(), state.offsetX());
+        assertEquals(overworld.offsetZ(), state.offsetZ());
+
+        state.respawn(1);
+        assertEquals(nether.offsetX(), state.offsetX());
+        assertEquals(nether.offsetZ(), state.offsetZ());
+    }
+
+    @Test
     void alignmentIsAlwaysAChunkMultiple() {
         JavaOriginState.Snapshot result = state.absolutePosition(23_000_001, -17_000_003, 10);
 
