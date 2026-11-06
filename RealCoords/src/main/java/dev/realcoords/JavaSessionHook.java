@@ -138,7 +138,7 @@ final class JavaSessionHook {
                 return;
             }
 
-            JavaPacketTransformHandler handler = new JavaPacketTransformHandler(new JavaPacketTransform(origin, config.maxJump), log);
+            JavaPacketTransformHandler handler = new JavaPacketTransformHandler(new JavaPacketTransform(origin, config.maxJump, config), log);
             pipeline.addBefore(NetworkConstants.MANAGER_NAME, HANDLER_NAME, handler);
             log.info("[RealCoords] Java coordinate transform installed; pipeline=" + pipeline.names());
         };
