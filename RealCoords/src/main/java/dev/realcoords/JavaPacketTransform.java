@@ -60,19 +60,25 @@ final class JavaPacketTransform {
     private final JavaOriginState origin;
     private int viewDistanceChunks = 10;
     private final double maxServerboundJump;
+    private final ShiftConfig config;
     private Key currentWorld;
 
     JavaPacketTransform(ShiftConfig config) {
-        this(new JavaOriginState(config), config.maxJump);
+        this(new JavaOriginState(config), config.maxJump, config);
     }
 
     JavaPacketTransform(JavaOriginState origin) {
-        this(origin, 64.0);
+        this(origin, 64.0, null);
     }
 
     JavaPacketTransform(JavaOriginState origin, double maxServerboundJump) {
+        this(origin, maxServerboundJump, null);
+    }
+
+    JavaPacketTransform(JavaOriginState origin, double maxServerboundJump, ShiftConfig config) {
         this.origin = origin;
         this.maxServerboundJump = maxServerboundJump;
+        this.config = config;
     }
 
     Packet clientbound(Packet packet) {
@@ -202,7 +208,8 @@ final class JavaPacketTransform {
         if (packet instanceof ClientboundBlockEntityDataPacket blockEntity) {
             Vector3i p = blockEntity.getPosition();
             return blockEntity.withPosition(Vector3i.from(p.getX() - origin.offsetX(), p.getY(),
-                    p.getZ() - origin.offsetZ()));
+                    p.getZ() - origin.offsetZ()))
+                    .withNbt(NbtShift.shift(blockEntity.getNbt(), -origin.offsetX(), -origin.offsetZ(), config));
         }
         if (packet instanceof ClientboundBlockEventPacket event) {
             Vector3i p = event.getPosition();
