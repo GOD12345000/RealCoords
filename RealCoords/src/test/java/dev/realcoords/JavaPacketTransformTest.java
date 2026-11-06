@@ -27,6 +27,7 @@ import org.geysermc.mcprotocollib.protocol.data.game.level.waypoint.WaypointOper
 import org.geysermc.mcprotocollib.protocol.data.game.level.notify.RainStrengthValue;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.player.ClientboundPlayerPositionPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.ClientboundLoginPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.ClientboundRespawnPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundSetEntityDataPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundLevelChunkWithLightPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundBlockUpdatePacket;
@@ -52,6 +53,38 @@ class JavaPacketTransformTest {
         ShiftConfig config = new ShiftConfig();
         config.dims.put(0, new ShiftConfig.Dim());
         return new JavaPacketTransform(config);
+    }
+
+    @Test
+    void syntheticResetUsesTemporaryThenOriginalWorldNameAndLocalDeathPosition() {
+        ShiftConfig config = new ShiftConfig();
+        config.dims.put(0, new ShiftConfig.Dim());
+        JavaPacketTransform transform = new JavaPacketTransform(config);
+        Key world = Key.key("minecraft:overworld");
+        GlobalPos death = new GlobalPos(world, Vector3i.from(22_999_000, 64, -17_001_000));
+        PlayerSpawnInfo spawn = new PlayerSpawnInfo(0, world, 123L, GameMode.SURVIVAL,
+                null, false, false, death, 0, 63);
+        transform.clientbound(new ClientboundLoginPacket(1, false, new Key[]{world},
+                20, 10, 10, false, true, false, spawn, true, true));
+        transform.clientbound(new ClientboundPlayerPositionPacket(
+                1, 23_000_000, 70, -17_000_000, 0, 0, 0, 0, 0));
+
+        List<Packet> reset = transform.syntheticResetRespawns();
+        assertEquals(2, reset.size());
+        ClientboundRespawnPacket temporary = assertInstanceOf(ClientboundRespawnPacket.class, reset.get(0));
+        ClientboundRespawnPacket restored = assertInstanceOf(ClientboundRespawnPacket.class, reset.get(1));
+        assertEquals("minecraft:overworld_realcoords_reset",
+                temporary.getCommonPlayerSpawnInfo().getWorldName().asString());
+        assertEquals(world, restored.getCommonPlayerSpawnInfo().getWorldName());
+        assertEquals(temporary.getCommonPlayerSpawnInfo().getDimension(),
+                restored.getCommonPlayerSpawnInfo().getDimension());
+        Vector3i shiftedDeath = restored.getCommonPlayerSpawnInfo().getLastDeathPos().getPosition();
+        assertEquals(death.getPosition().getX() - transform.offsetX(), shiftedDeath.getX());
+        assertEquals(death.getPosition().getZ() - transform.offsetZ(), shiftedDeath.getZ());
+        assertTrue(temporary.isKeepMetadata());
+        assertTrue(temporary.isKeepAttributeModifiers());
+        assertTrue(restored.isKeepMetadata());
+        assertTrue(restored.isKeepAttributeModifiers());
     }
 
     @Test
