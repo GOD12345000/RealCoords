@@ -28,6 +28,7 @@ final class ShiftConfig {
 
     boolean cacheEnabled = true, cacheCompress = true;
     int cacheMaxChunks = 2500, cacheMargin = 1500, resendPerTick = 24, evictMarginChunks = 4;
+    long cacheMaxBytes = 32L * 1024 * 1024;
 
     final Map<Integer, Dim> dims = new HashMap<>();
 
@@ -107,6 +108,7 @@ final class ShiftConfig {
         c.cacheEnabled = bool(cc, "enabled", true);
         c.cacheCompress = bool(cc, "compress", true);
         c.cacheMaxChunks = Math.max(64, num(cc, "max-chunks", 2500));
+        c.cacheMaxBytes = Math.max(1024L * 1024, longNum(cc, "max-bytes", 32L * 1024 * 1024));
         c.cacheMargin = Math.max(256, num(cc, "activate-margin", 1500));
         c.resendPerTick = Math.max(1, num(cc, "resend-per-tick", 24));
         c.evictMarginChunks = Math.max(0, num(cc, "evict-margin-chunks", 4));
@@ -153,6 +155,10 @@ final class ShiftConfig {
 
     private static int num(Map<String, Object> m, String k, int d) {
         return m.get(k) instanceof Number n ? n.intValue() : d;
+    }
+
+    private static long longNum(Map<String, Object> m, String k, long d) {
+        return m.get(k) instanceof Number n ? n.longValue() : d;
     }
 
     private static double dbl(Map<String, Object> m, String k, double d) {
