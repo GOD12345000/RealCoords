@@ -151,6 +151,44 @@ class JavaOriginStateTest {
     }
 
     @Test
+    void liveMovementCanRequestAnAlignedOriginShiftWhenExplicitlyEnabled() {
+        config.shiftWhileMoving = true;
+        config.cooldownMs = 0;
+        JavaOriginState.Snapshot initial = state.absolutePosition(23_000_000, -17_000_000, 10);
+        assertTrue(initial.changed());
+        int originalOffsetX = state.offsetX();
+        int originalOffsetZ = state.offsetZ();
+
+        JavaOriginState.Snapshot changed = null;
+        for (int step = 1; step <= 1000 && changed == null; step++) {
+            assertTrue(state.acceptServerboundPosition(
+                    23_000_000 + step * 60.0, -17_000_000 + step * 60.0, 64.0));
+            changed = state.takeMovementOriginChange();
+        }
+
+        assertNotNull(changed);
+        assertTrue(changed.changed());
+        assertNotEquals(originalOffsetX, changed.offsetX());
+        assertNotEquals(originalOffsetZ, changed.offsetZ());
+        assertEquals(0, Math.floorMod(changed.offsetX(), 16));
+        assertEquals(0, Math.floorMod(changed.offsetZ(), 16));
+    }
+
+    @Test
+    void liveMovementDoesNotChangeOriginByDefault() {
+        state.absolutePosition(23_000_000, -17_000_000, 10);
+        int offsetX = state.offsetX();
+        int offsetZ = state.offsetZ();
+        for (int step = 1; step <= 500; step++) {
+            assertTrue(state.acceptServerboundPosition(
+                    23_000_000 + step, -17_000_000 + step, 64.0));
+            assertNull(state.takeMovementOriginChange());
+        }
+        assertEquals(offsetX, state.offsetX());
+        assertEquals(offsetZ, state.offsetZ());
+    }
+
+    @Test
     void alignmentIsAlwaysAChunkMultiple() {
         JavaOriginState.Snapshot result = state.absolutePosition(23_000_001, -17_000_003, 10);
 
