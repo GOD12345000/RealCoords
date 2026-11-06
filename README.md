@@ -2,7 +2,7 @@
 
 **RealCoords** 是一個適用於 Geyser 的 Geyser Extension，目標是改善 Bedrock 玩家在 Java 世界遠距離座標下的客戶端座標精度問題。
 
-> **專案狀態：實驗性／測試中。** 已確認專案可由 GitHub Actions 編譯，並已在 Velocity + Geyser 2.12.1 環境成功載入；但這不代表所有遊戲封包與玩法均已完成實機驗證。請先在備份過的測試世界使用，不要直接視為正式環境可用。
+> **階段一狀態：可供測試使用（Phase 1 test release）。** Java 協議層浮動原點已通過 CI，並由維護者在 Velocity + Geyser 2.12.1 的實際伺服器環境測試；目前回報在約 X=23,000,000、Z=17,000,000 的遠距離遊玩沒有遇到問題。這是目前測試範圍內的結果，不代表所有版本、封包與玩法均已完整驗證。請先備份世界，並閱讀下方已知限制。連續移動時自動重新設定原點（階段二）尚未完成。
 
 English summary: RealCoords is an experimental Geyser extension that shifts Java protocol coordinates before Geyser converts them to floating-point values, keeping Geyser's internal coordinates small while the Java backend retains real world coordinates.
 
@@ -81,7 +81,7 @@ RealCoords 使用部分 Geyser／Cloudburst 內部類別與封包處理方式，
 
 ### 2. 下載 RealCoords JAR
 
-到 GitHub Actions 的成功建置紀錄，在 **Artifacts** 下載 RealCoords-JAR；或自行依照下方「從原始碼編譯」產生 JAR。
+下載階段一測試版：開啟 [Phase 1 CI #342](https://github.com/GOD12345000/RealCoords/actions/runs/42184854276)，在頁面底部 **Artifacts** 下載 `RealCoords-JAR`，解壓後取得 JAR。這是對應階段一程式碼的 CI 產物；GitHub Actions Artifact 有保存期限，過期後請從相同分支重新執行建置。也可以依照下方「從原始碼編譯」自行產生 JAR。
 
 解壓 Artifact，取得類似 RealCoords-1.0.0.jar 的檔案。
 
@@ -257,6 +257,16 @@ Push 到 main、提交 Pull Request，或手動執行 **Actions → Build RealCo
 
 ## 測試清單與已知限制
 
+### 階段一已完成／已修正
+
+- [x] Java downstream hook 在 Geyser translator 前攔截 Java 協議封包，避免遠距離座標先轉成 float 才失去精度。
+- [x] Java clientbound 與 serverbound 的已支援座標封包採用相反方向偏移，Java 後端仍使用真實世界座標。
+- [x] 登入、重生／維度切換及遠距離絕對傳送時選擇／更新每位玩家、每個維度的浮動原點。
+- [x] 已處理玩家位置、區塊與光照、生物群系、方塊更新、方塊實體資料、部分實體／粒子／聲音／爆炸／世界邊界等座標資料，以及多種互動封包。
+- [x] 修正玩家移動與載具移動的座標還原路徑，並處理傳送確認封包的座標還原。
+- [x] 保留舊 Bedrock layer 模式，並保留真實座標 ActionBar、Java ActionBar 合併及移動安全檢查。
+- [x] 維護者實機回報：在約 X=23,000,000、Z=17,000,000 的遠距離場景，目前測試版本遊玩未遇到問題。此為已回報的測試結果，不等於完整相容性認證。
+
 ### 已由 CI／原始碼檢查確認
 
 - [x] GitHub Actions 編譯 Java 21 專案並執行 JUnit 測試。
@@ -264,9 +274,9 @@ Push 到 main、提交 Pull Request，或手動執行 **Actions → Build RealCo
 - [x] Java 模式已接上 Java protocol transformer 與 Bedrock 輔助 ActionBar hook。
 - [x] 單元測試涵蓋初始原點、門檻抖動、相對／混合位置旗標、分批取得絕對 X/Z、跨維度原點隔離、玩家移動往返、Netty EmbeddedChannel 封包替換、區塊座標與異常移動安全閘。
 
-### 實機驗收清單
+### 尚待擴大實機驗收
 
-- [ ] Velocity + Geyser 2.12.1 實際登入時，確認 Java hook 在第一個遊戲封包前安裝且首包日誌出現。
+- [ ] 覆蓋更多 Geyser／Bedrock／Java 後端版本與多人同時遊玩情境。
 - [ ] Java 模式遠距登入／傳送後，確認 Geyser 內部與 Bedrock 客戶端座標維持小數值，Java 後端仍看到真實座標。
 - [ ] 遠距離觸發偏移後，Bedrock 與 Java 端座標一致。
 - [ ] 重設距離、冷卻時間與客戶端確認流程正常。
@@ -280,14 +290,16 @@ Push 到 main、提交 Pull Request，或手動執行 **Actions → Build RealCo
 - [ ] 地圖、指南針／磁石追蹤、畫作與所有特殊世界事件正常。
 - [ ] 多名 Bedrock 玩家同時遊玩時，CPU、記憶體與網路負載可接受。
 
-### 已知限制／風險
+### 尚未完成的功能與已知限制
 
-1. **未完整轉換的封包**：Java 模式目前只改寫已明確支援的封包。尚未處理的絕對座標封包與部分特殊封包，可能在偏移狀態下錯位；地圖圖示座標是 map-local，刻意不套用世界原點偏移。login／respawn 的 `lastDeathPos` 會在原點確定後更新 Geyser 內部 metadata，但若死亡標記與玩家相距過遠，仍可能超出本地座標範圍並產生警告。命令方塊、結構方塊與拼圖方塊位置已加入轉換，但仍需實機核對。
-2. **Geyser 浮點精度尚待實機驗證**：Java 模式會在 MCProtocolLib 封包進入 Geyser translator 前先平移座標，設計上可避免 Geyser 將約 ±2,300 萬的 double 轉成 float 時發生量化；但仍需在實際伺服器確認。
-3. **實體朝向**：部分實體重新送出時，朝向可能暫時歸零，直到收到下一次移動更新。
-4. **載具**：騎乘載具時發生原點切換，可能短暫抖動。
-5. **區塊快取**：快取上限是每位玩家各自計算；多人使用時需實際監控整體記憶體（此項主要適用於舊 Bedrock 模式）。
-6. **內部 API 相依**：封包類別與欄位可能隨 Geyser／Cloudburst Protocol 更新而變動。建置成功不代表執行時行為一定相容。
+1. **階段二：連續移動自動重新設定原點尚未實作**：目前只在登入、重生／換維度及符合條件的遠距離絕對傳送等世界重載時機更新原點。玩家持續步行／飛行跨越門檻時，不會自動完成完整的重新原點流程。
+2. **階段二的世界狀態重建尚未完成**：目前 Java 模式的 chunk cache 以擷取／保存為主，尚未串接原點切換後的完整區塊重播；合成重設封包、重播批次、完整實體狀態及世界全域狀態恢復仍待實作。
+3. **未完整轉換的封包**：Java 模式目前只改寫已明確支援的封包。尚未處理的絕對座標封包與部分特殊封包，可能在偏移狀態下錯位；地圖圖示座標是 map-local，刻意不套用世界原點偏移。login／respawn 的 `lastDeathPos` 會在原點確定後更新 Geyser 內部 metadata，但若死亡標記與玩家相距過遠，仍可能超出本地座標範圍並產生警告。命令方塊、結構方塊與拼圖方塊位置已加入轉換，但仍需實機核對。
+4. **Geyser 浮點精度與其他版本相容性**：目前測試環境已回報遠距離遊玩正常，但仍需在更多 Geyser／Bedrock／Java 版本組合確認。
+5. **實體朝向**：部分實體重新送出時，朝向可能暫時歸零，直到收到下一次移動更新。
+6. **載具**：騎乘載具時發生原點切換，可能短暫抖動。
+7. **區塊快取**：快取上限是每位玩家各自計算；多人使用時需實際監控整體記憶體（此項主要適用於舊 Bedrock 模式）。
+8. **內部 API 相依**：封包類別與欄位可能隨 Geyser／Cloudburst Protocol 更新而變動。建置成功不代表執行時行為一定相容。
 
 以上限制是目前已知的開發狀態，不代表每一項都已在所有版本重現；請以測試結果與 issue 回報補充。
 
