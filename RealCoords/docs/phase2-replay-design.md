@@ -1,6 +1,6 @@
 # Phase 2: live re-origin and Geyser state replay design
 
-Status: partial implementation. Packet snapshotting, bounded chunk/update capture, packet reconstruction, replay dispatch, and a scoped acknowledgement gate are implemented. Synthetic reset orchestration and continuous live re-origin remain disabled.
+Status: partial implementation. Packet snapshotting, bounded chunk/update capture, packet reconstruction, replay dispatch, and a scoped, timeout-bounded acknowledgement gate for the two-respawn sequence is implemented. Synthetic reset orchestration and continuous live re-origin remain disabled.
 
 ## Verified Geyser reset behavior
 
@@ -71,7 +71,7 @@ The transaction is intentionally not enabled until every stage is testable:
 ## Safety gates before enabling
 
 - No chunk or entity replay until bounded memory accounting and eviction tests pass.
-- The acknowledgement gate suppresses only one expected `ServerboundPlayerLoadedPacket` and the exact reserved teleport ID, and EmbeddedChannel tests cover unrelated acknowledgements and normal packets. A bounded timeout/abort and end-to-end synthetic reset sequencing are still required before use.
+- The acknowledgement gate suppresses the two expected `ServerboundPlayerLoadedPacket` responses and the exact reserved teleport ID. It aborts after the configured acknowledgement timeout, and EmbeddedChannel tests cover unrelated acknowledgements, normal packets, and explicit abort. End-to-end synthetic reset sequencing is still required before use.
 - No movement unfreeze while a replay batch is incomplete.
 - Any timeout, disconnect, missing acknowledgement, or replay overflow aborts the transaction without forwarding synthetic packets to the backend.
 - origin-shift.shift-while-moving remains false by default until full CI coverage and manual acceptance are available.
