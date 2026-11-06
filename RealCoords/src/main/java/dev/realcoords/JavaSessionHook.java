@@ -188,16 +188,19 @@ final class JavaSessionHook {
             if (!syntheticResetGate.begin(reservedTeleportId, 2)) return false;
             cancelSyntheticResetTimeout();
             syntheticResetTimeout = ctx.executor().schedule(() -> {
-                syntheticResetGate.abort();
-                syntheticResetTimeout = null;
-                if (log != null) log.warning("[RealCoords] synthetic reset acknowledgement timed out; gate aborted");
+                if (log != null) log.warning("[RealCoords] synthetic reset acknowledgement timed out; closing downstream session to prevent synthetic packet leakage");
+                abortSyntheticReset();
             }, transform.syntheticAckTimeoutMillis(), TimeUnit.MILLISECONDS);
             return true;
         }
 
         void abortSyntheticReset() {
+            boolean wasActive = syntheticResetGate.active();
             syntheticResetGate.abort();
             cancelSyntheticResetTimeout();
+            // Once synthetic packets have entered Geyser, a timeout/abort must not
+            // release a late acknowledgement to the real Java server.
+            if (wasActive && channelContext != null) channelContext.close();
         }
 
         private void cancelSyntheticResetTimeout() {
