@@ -9,6 +9,8 @@ import org.geysermc.mcprotocollib.protocol.data.game.entity.metadata.EntityMetad
 import org.geysermc.mcprotocollib.protocol.data.game.entity.metadata.MetadataType;
 import org.geysermc.mcprotocollib.protocol.data.game.entity.metadata.type.ObjectEntityMetadata;
 import org.geysermc.mcprotocollib.protocol.data.game.entity.metadata.Equipment;
+import org.geysermc.mcprotocollib.protocol.data.game.advancement.Advancement;
+import org.geysermc.mcprotocollib.protocol.data.game.inventory.VillagerTrade;
 import org.geysermc.mcprotocollib.protocol.data.game.item.ItemStack;
 import org.geysermc.mcprotocollib.protocol.data.game.item.component.DataComponents;
 import org.geysermc.mcprotocollib.protocol.data.game.item.component.DataComponentTypes;
@@ -24,6 +26,7 @@ import org.geysermc.mcprotocollib.protocol.data.game.level.particle.Particle;
 import org.geysermc.mcprotocollib.protocol.data.game.level.particle.VibrationParticleData;
 import org.geysermc.mcprotocollib.protocol.data.game.level.particle.positionsource.BlockPositionSource;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.ClientboundLoginPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.ClientboundUpdateAdvancementsPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.ClientboundRespawnPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundAddEntityPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundMoveVehiclePacket;
@@ -35,6 +38,7 @@ import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.play
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundBlockUpdatePacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundSetEquipmentPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.inventory.ClientboundContainerSetContentPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.inventory.ClientboundMerchantOffersPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.inventory.ClientboundContainerSetSlotPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.inventory.ClientboundSetCursorItemPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.inventory.ClientboundSetPlayerInventoryPacket;
@@ -255,6 +259,31 @@ final class JavaPacketTransform {
             Vector3i p = sign.getPosition();
             return sign.withPosition(Vector3i.from(p.getX() - origin.offsetX(), p.getY(),
                     p.getZ() - origin.offsetZ()));
+        }
+        if (packet instanceof ClientboundUpdateAdvancementsPacket advancements) {
+            Advancement[] entries = advancements.getAdvancements().clone();
+            for (int i = 0; i < entries.length; i++) {
+                Advancement entry = entries[i];
+                Advancement.DisplayData display = entry.getDisplayData();
+                if (display != null) {
+                    Advancement.DisplayData shiftedDisplay = new Advancement.DisplayData(
+                            display.getTitle(), display.getDescription(), shiftItemStack(display.getIcon()),
+                            display.getAdvancementType(), display.isShowToast(), display.isHidden(),
+                            display.getBackgroundTexture());
+                    entries[i] = new Advancement(entry.getId(), entry.getRequirements(), entry.getParentId(),
+                            shiftedDisplay, entry.isSendsTelemetryEvent(), entry.getPosX(), entry.getPosY());
+                }
+            }
+            return advancements.withAdvancements(entries);
+        }
+        if (packet instanceof ClientboundMerchantOffersPacket merchant) {
+            List<VillagerTrade> offers = new ArrayList<>();
+            for (VillagerTrade trade : merchant.getOffers()) {
+                offers.add(new VillagerTrade(trade.getItemCostA(), shiftItemStack(trade.getResult()),
+                        trade.getItemCostB(), trade.isOutOfStock(), trade.getUses(), trade.getMaxUses(),
+                        trade.getXp(), trade.getSpecialPriceDiff(), trade.getPriceMultiplier(), trade.getDemand()));
+            }
+            return merchant.withOffers(offers);
         }
         if (packet instanceof ClientboundSetEquipmentPacket equipment) {
             Equipment[] entries = equipment.getEquipment().clone();
