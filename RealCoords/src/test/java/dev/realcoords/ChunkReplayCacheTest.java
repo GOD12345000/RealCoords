@@ -24,6 +24,20 @@ class ChunkReplayCacheTest {
     }
 
     @Test
+    void nearestFirstReplayPagesAreOrderedAndNonOverlapping() {
+        ChunkReplayCache cache = new ChunkReplayCache(8, 1024, false);
+        cache.put(3, 0, new byte[]{3});
+        cache.put(1, 0, new byte[]{1});
+        cache.put(2, 0, new byte[]{2});
+        cache.put(-1, 0, new byte[]{4});
+
+        List<ChunkReplayCache.ReplayChunk> first = cache.snapshotNearestFirst(0, 0, 0, 2);
+        List<ChunkReplayCache.ReplayChunk> second = cache.snapshotNearestFirst(0, 0, 2, 2);
+        assertEquals(List.of(1, -1), first.stream().map(ChunkReplayCache.ReplayChunk::x).toList());
+        assertEquals(List.of(2, 3), second.stream().map(ChunkReplayCache.ReplayChunk::x).toList());
+    }
+
+    @Test
     void payloadsAreDefensivelyCopied() {
         ChunkReplayCache cache = new ChunkReplayCache(8, 32_768, true);
         byte[] input = {1, 2, 3};
