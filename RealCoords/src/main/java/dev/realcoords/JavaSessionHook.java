@@ -227,10 +227,15 @@ final class JavaSessionHook {
         }
 
         int replayCachedChunks(ChannelHandlerContext ctx, int centerChunkX, int centerChunkZ, int limit) {
+            return replayCachedChunks(ctx, centerChunkX, centerChunkZ, 0, limit);
+        }
+
+        int replayCachedChunks(ChannelHandlerContext ctx, int centerChunkX, int centerChunkZ,
+                               int startIndex, int limit) {
             if (!ctx.executor().inEventLoop()) {
                 throw new IllegalStateException("Cached chunk replay must run on the downstream channel event loop");
             }
-            var packets = transform.replayCachedChunks(centerChunkX, centerChunkZ, limit);
+            var packets = transform.replayCachedChunks(centerChunkX, centerChunkZ, startIndex, limit);
             for (Packet packet : packets) {
                 ctx.fireChannelRead(packet);
             }
