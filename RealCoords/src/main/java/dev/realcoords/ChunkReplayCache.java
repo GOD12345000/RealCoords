@@ -18,8 +18,9 @@ final class ChunkReplayCache {
     enum OverlayType { BLOCK_UPDATE, BLOCK_ENTITY }
 
     record ChunkPos(int x, int z) { }
+    record BlockPos(int x, int y, int z) { }
 
-    record ReplayOverlay(OverlayType type, long positionKey, byte[] payload) {
+    record ReplayOverlay(OverlayType type, BlockPos position, byte[] payload) {
         ReplayOverlay {
             Objects.requireNonNull(type, "type");
             payload = payload.clone();
@@ -35,7 +36,7 @@ final class ChunkReplayCache {
         @Override public byte[] payload() { return payload.clone(); }
     }
 
-    private record OverlayKey(OverlayType type, long positionKey) { }
+    private record OverlayKey(OverlayType type, BlockPos position) { }
     private record StoredChunk(byte[] bytes, int originalLength, boolean compressed) {
         long memorySize() { return bytes.length; }
     }
@@ -75,7 +76,7 @@ final class ChunkReplayCache {
     }
 
     /** Keeps only the latest update for a position/type while its base chunk is cached. */
-    synchronized boolean putOverlay(int chunkX, int chunkZ, OverlayType type, long positionKey, byte[] payload) {
+    synchronized boolean putOverlay(int chunkX, int chunkZ, OverlayType type, BlockPos position, byte[] payload) {
         Objects.requireNonNull(type, "type");
         Objects.requireNonNull(payload, "payload");
         ChunkPos chunk = new ChunkPos(chunkX, chunkZ);
@@ -83,7 +84,7 @@ final class ChunkReplayCache {
 
         LinkedHashMap<OverlayKey, StoredOverlay> perChunk =
                 overlays.computeIfAbsent(chunk, ignored -> new LinkedHashMap<>());
-        OverlayKey key = new OverlayKey(type, positionKey);
+        OverlayKey key = new OverlayKey(type, Objects.requireNonNull(position, "position"));
         StoredOverlay previous = perChunk.remove(key);
         if (previous != null) storedBytes -= previous.memorySize();
         StoredOverlay replacement = new StoredOverlay(payload.clone());
