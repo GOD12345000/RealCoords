@@ -80,6 +80,7 @@ import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.Serv
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundMovePlayerPosRotPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundMovePlayerRotPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.level.ServerboundMoveVehiclePacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.level.ServerboundAcceptTeleportationPacket;
 import org.geysermc.mcprotocollib.protocol.data.game.chunk.ChunkBiomeData;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundUseItemOnPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundPlayerActionPacket;
@@ -578,6 +579,12 @@ final class JavaPacketTransform {
     }
 
     Packet serverbound(Packet packet) {
+        if (packet instanceof ServerboundAcceptTeleportationPacket accept) {
+            // Geyser includes its Bedrock-confirmed position in this packet.
+            // Restore the floating-origin offset just like ordinary movement.
+            return accept.withX(accept.getX() + origin.offsetX())
+                    .withZ(accept.getZ() + origin.offsetZ());
+        }
         if (packet instanceof ServerboundUseItemOnPacket use) {
             Vector3i p = use.getPosition();
             return use.withPosition(Vector3i.from(p.getX() + origin.offsetX(), p.getY(),
