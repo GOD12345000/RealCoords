@@ -6,6 +6,7 @@ import org.geysermc.mcprotocollib.protocol.data.game.entity.player.PositionEleme
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.player.ClientboundPlayerPositionPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundLevelChunkWithLightPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundMovePlayerPosPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundMovePlayerPosRotPacket;
 import org.junit.jupiter.api.Test;
 
 import java.util.BitSet;
@@ -146,6 +147,23 @@ class JavaPacketTransformTest {
         ServerboundMovePlayerPosPacket movement = new ServerboundMovePlayerPosPacket(
                 true, false, local.getPosition().getX() + 3, 70, local.getPosition().getZ() + 4);
         assertNotNull(transform.serverbound(movement));
+    }
+
+    @Test
+    void configuredJumpLimitAppliesToPositionAndRotationPackets() {
+        ShiftConfig config = new ShiftConfig();
+        config.maxJump = 5.0;
+        config.dims.put(0, new ShiftConfig.Dim());
+        JavaPacketTransform transform = new JavaPacketTransform(config);
+        ClientboundPlayerPositionPacket initial = new ClientboundPlayerPositionPacket(
+                1, 23_000_000, 70, -17_000_000, 0, 0, 0, 0, 0);
+        ClientboundPlayerPositionPacket local =
+                (ClientboundPlayerPositionPacket) transform.clientbound(initial);
+
+        ServerboundMovePlayerPosRotPacket tooFar = new ServerboundMovePlayerPosRotPacket(
+                true, false, local.getPosition().getX() + 4, 70,
+                local.getPosition().getZ() + 4, 90, 0);
+        assertNull(transform.serverbound(tooFar));
     }
 
     @Test
