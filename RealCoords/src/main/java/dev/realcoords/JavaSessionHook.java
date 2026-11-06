@@ -21,6 +21,7 @@ import org.geysermc.mcprotocollib.network.packet.Packet;
 
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Non-mutating probe for the Java-side MCProtocolLib pipeline.
@@ -38,8 +39,13 @@ final class JavaSessionHook {
 
     static void install(GeyserSession geyserSession, ExtensionLogger log) {
         AtomicBoolean finished = new AtomicBoolean();
+        AtomicBoolean listenerRegistered = new AtomicBoolean();
+        AtomicReference<ScheduledFuture<?>> pollerReference = new AtomicReference<>();
+
         ScheduledFuture<?> poller = geyserSession.getTickEventLoop().scheduleAtFixedRate(() -> {
             if (finished.get()) {
+                ScheduledFuture<?> scheduled = pollerReference.get();
+                if (scheduled != null) scheduled.cancel(false);
                 return;
             }
 
@@ -50,51 +56,57 @@ final class JavaSessionHook {
 
             Session session = downstream.getSession();
             if (session.isConnected()) {
-                finished.set(true);
-                installOnChannel(session, log);
+                if (finished.compareAndSet(false, true)) {
+                    installOnChannel(session, log);
+                }
+                ScheduledFuture<?> scheduled = pollerReference.get();
+                if (scheduled != null) scheduled.cancel(false);
                 return;
             }
 
-            // Register before checking isConnected again to close the race with channelActive.
-            session.addListener(new SessionListener() {
-                @Override
-                public void packetReceived(Session ignored, Packet packet) {
-                }
-
-                @Override
-                public void packetSending(PacketSendingEvent event) {
-                }
-
-                @Override
-                public void packetSent(Session ignored, Packet packet) {
-                }
-
-                @Override
-                public void packetError(PacketErrorEvent event) {
-                }
-
-                @Override
-                public void connected(ConnectedEvent event) {
-                    if (finished.compareAndSet(false, true)) {
-                        installOnChannel(session, log);
+            if (listenerRegistered.compareAndSet(false, true)) {
+                // Register before checking isConnected again to close the race with channelActive.
+                session.addListener(new SessionListener() {
+                    @Override
+                    public void packetReceived(Session ignored, Packet packet) {
                     }
-                    session.removeListener(this);
-                }
 
-                @Override
-                public void disconnecting(DisconnectingEvent event) {
-                    session.removeListener(this);
-                }
+                    @Override
+                    public void packetSending(PacketSendingEvent event) {
+                    }
 
-                @Override
-                public void disconnected(DisconnectedEvent event) {
-                    session.removeListener(this);
+                    @Override
+                    public void packetSent(Session ignored, Packet packet) {
+                    }
+
+                    @Override
+                    public void packetError(PacketErrorEvent event) {
+                    }
+
+                    @Override
+                    public void connected(ConnectedEvent event) {
+                        if (finished.compareAndSet(false, true)) {
+                            installOnChannel(session, log);
+                        }
+                        session.removeListener(this);
+                    }
+
+                    @Override
+                    public void disconnecting(DisconnectingEvent event) {
+                        session.removeListener(this);
+                    }
+
+                    @Override
+                    public void disconnected(DisconnectedEvent event) {
+                        session.removeListener(this);
+                    }
+                });
+                if (session.isConnected() && finished.compareAndSet(false, true)) {
+                    installOnChannel(session, log);
                 }
-            });
-            if (session.isConnected() && finished.compareAndSet(false, true)) {
-                installOnChannel(session, log);
             }
         }, 0, 50, TimeUnit.MILLISECONDS);
+        pollerReference.set(poller);
 
         geyserSession.getTickEventLoop().schedule(() -> {
             if (finished.compareAndSet(false, true)) {
