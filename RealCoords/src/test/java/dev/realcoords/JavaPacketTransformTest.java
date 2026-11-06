@@ -210,7 +210,8 @@ class JavaPacketTransformTest {
         ClientboundSetDefaultSpawnPositionPacket shifted =
                 (ClientboundSetDefaultSpawnPositionPacket) transform.clientbound(packet);
 
-        assertEquals(Vector3i.from(-transform.offsetX(), 64, -transform.offsetZ()),
+        assertEquals(Vector3i.from(23_000_000 - transform.offsetX(), 64,
+                        -17_000_000 - transform.offsetZ()),
                 shifted.getGlobalPos().getPosition());
     }
 
