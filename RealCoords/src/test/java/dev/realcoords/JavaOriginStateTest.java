@@ -88,6 +88,21 @@ class JavaOriginStateTest {
     }
 
     @Test
+    void initialMixedRelativePositionWaitsForBothAbsoluteAxes() {
+        JavaOriginState.Snapshot partial =
+                state.absolutePosition(23_000_000, 12.5, 10, true, false);
+        assertNotEquals(0, partial.offsetX());
+        assertEquals(0, partial.offsetZ());
+
+        JavaOriginState.Snapshot complete =
+                state.absolutePosition(23_000_010, 17_000_000, 10, true, true);
+        assertNotEquals(0, complete.offsetX());
+        assertNotEquals(0, complete.offsetZ());
+        assertTrue(Math.abs(23_000_010 - complete.offsetX()) < 256);
+        assertTrue(Math.abs(17_000_000 - complete.offsetZ()) < 256);
+    }
+
+    @Test
     void eachDimensionRestoresItsOwnOrigin() {
         state.absolutePosition(100_000, 100_000, 10);
         int overworldOffset = state.offsetX();
