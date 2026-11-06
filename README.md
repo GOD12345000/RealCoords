@@ -20,7 +20,7 @@ English summary: RealCoords is an experimental Geyser extension that shifts Java
 
 ## 功能概覽
 
-- **每位玩家獨立的浮動原點**：Java 模式在登入、重生／換維度與遠距離傳送時，選擇符合設定門檻與對齊規則的 X/Z 原點。
+- **每位玩家、每個維度獨立的浮動原點**：Java 模式在登入、重生／換維度與遠距離傳送時，選擇符合設定門檻與對齊規則的 X/Z 原點。
 - **Java 協議層浮動原點（新模式）**：在 MCProtocolLib 封包進入 Geyser translator 前平移座標，讓 Geyser 內部處理小座標，Java 後端仍使用真實座標。
 - **舊 Bedrock 模式**：保留舊版封包轉換，透過 `origin-shift.layer: bedrock` 選用；兩種模式不會同時啟用。
 - **真實座標 ActionBar**：顯示真實 X/Y/Z 與面向，並可隱藏 Bedrock 原版座標列。
@@ -262,7 +262,7 @@ Push 到 main、提交 Pull Request，或手動執行 **Actions → Build RealCo
 - [x] GitHub Actions 編譯 Java 21 專案並執行 JUnit 測試。
 - [x] Java downstream hook 的 pipeline 插入位置與連線時序已依 Geyser／MCProtocolLib 原始碼調查。
 - [x] Java 模式已接上 Java protocol transformer 與 Bedrock 輔助 ActionBar hook。
-- [x] 單元測試涵蓋初始原點、相對與混合位置旗標、玩家移動往返、Netty EmbeddedChannel 封包替換、區塊座標與異常移動安全閘。
+- [x] 單元測試涵蓋初始原點、門檻抖動、相對／混合位置旗標、分批取得絕對 X/Z、跨維度原點隔離、玩家移動往返、Netty EmbeddedChannel 封包替換、區塊座標與異常移動安全閘。
 
 ### 實機驗收清單
 
