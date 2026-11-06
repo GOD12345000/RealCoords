@@ -97,12 +97,7 @@ class JavaPacketTransformTest {
     @Test
     void movementObservedDuringReplayUpdatesBaselineWithoutShiftingAgain() {
         ShiftConfig config = new ShiftConfig();
-        ShiftConfig.Dim overworld = new ShiftConfig.Dim();
-        // Keep this test's deliberately short travel scenario independent of
-        // the production default (100,000 blocks).
-        overworld.trigger = 50_000;
-        overworld.reset = 20_000;
-        config.dims.put(0, overworld);
+        config.dims.put(0, new ShiftConfig.Dim());
         config.shiftWhileMoving = true;
         config.cooldownMs = 0;
         JavaPacketTransform transform = new JavaPacketTransform(config);
@@ -201,8 +196,20 @@ class JavaPacketTransformTest {
 
     @Test
     void optInLiveMovementShiftDropsTriggeringPacketAndPublishesNewOrigin() {
+        // This scenario intentionally walks 60,000 blocks and expects the
+        // legacy 50,000-block trigger. Pin every origin threshold explicitly
+        // so changes to production defaults do not silently change the test.
+        final int testTriggerDistance = 50_000;
+        final int testResetDistance = 20_000;
+        final int testRecenterOnReload = 2_048;
+        final int testAlignment = 256;
         ShiftConfig config = new ShiftConfig();
-        config.dims.put(0, new ShiftConfig.Dim());
+        ShiftConfig.Dim overworld = new ShiftConfig.Dim();
+        overworld.trigger = testTriggerDistance;
+        overworld.reset = testResetDistance;
+        overworld.alignment = testAlignment;
+        config.dims.put(0, overworld);
+        config.recenterOnReload = testRecenterOnReload;
         config.shiftWhileMoving = true;
         config.cooldownMs = 0;
         JavaPacketTransform transform = new JavaPacketTransform(config);
