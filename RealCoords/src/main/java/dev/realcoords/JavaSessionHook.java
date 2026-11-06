@@ -54,17 +54,9 @@ final class JavaSessionHook {
             }
 
             Session session = downstream.getSession();
-            if (session.isConnected()) {
-                if (finished.compareAndSet(false, true)) {
-                    installOnChannel(session, config, origin, log);
-                }
-                ScheduledFuture<?> scheduled = pollerReference.get();
-                if (scheduled != null) scheduled.cancel(false);
-                return;
-            }
-
             if (listenerRegistered.compareAndSet(false, true)) {
-                // Register before checking isConnected again to close the race with channelActive.
+                // Attach the lifecycle listener before checking isConnected. This
+                // catches channelActive even if it races with this discovery poll.
                 session.addListener(new SessionListener() {
                     @Override
                     public void packetReceived(Session ignored, Packet packet) {
@@ -100,11 +92,12 @@ final class JavaSessionHook {
                         session.removeListener(this);
                     }
                 });
+                // If connection completed before listener registration, install now.
                 if (session.isConnected() && finished.compareAndSet(false, true)) {
                     installOnChannel(session, config, origin, log);
                 }
             }
-        }, 0, 50, TimeUnit.MILLISECONDS);
+        }, 0, 1, TimeUnit.MILLISECONDS);
         pollerReference.set(poller);
 
         geyserSession.getTickEventLoop().schedule(() -> {
