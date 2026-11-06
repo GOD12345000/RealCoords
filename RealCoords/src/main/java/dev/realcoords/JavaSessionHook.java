@@ -159,7 +159,11 @@ final class JavaSessionHook {
         private final SyntheticResetGate syntheticResetGate = new SyntheticResetGate();
         private ChannelHandlerContext channelContext;
         private ScheduledFuture<?> syntheticResetTimeout;
+        private ScheduledFuture<?> replayBatchTask;
+        private ScheduledFuture<?> replayTimeout;
         private ReoriginReplayPlan activeReplayPlan;
+        private boolean syntheticResetPendingReplay;
+        private int nextSyntheticTeleportId = Integer.MIN_VALUE;
 
         JavaPacketTransformHandler(JavaPacketTransform transform, ExtensionLogger log) {
             this(transform, null, log);
@@ -181,6 +185,7 @@ final class JavaSessionHook {
             abortSyntheticReset();
             if (activeReplayPlan != null) activeReplayPlan.abort();
             activeReplayPlan = null;
+            cancelReplayTasks();
             channelContext = null;
         }
 
@@ -201,6 +206,7 @@ final class JavaSessionHook {
         void abortSyntheticReset() {
             boolean wasActive = syntheticResetGate.active();
             syntheticResetGate.abort();
+            syntheticResetPendingReplay = false;
             cancelSyntheticResetTimeout();
             // Once synthetic packets have entered Geyser, a timeout/abort must not
             // release a late acknowledgement to the real Java server.
@@ -220,6 +226,7 @@ final class JavaSessionHook {
             var respawns = transform.syntheticResetRespawns();
             var position = transform.syntheticPlayerPosition(reservedTeleportId);
             if (respawns.size() != 2 || position == null || !beginSyntheticReset(reservedTeleportId)) return 0;
+            syntheticResetPendingReplay = true;
             try {
                 for (Packet respawn : respawns) ctx.fireChannelRead(respawn);
                 ctx.fireChannelRead(position);
@@ -288,7 +295,7 @@ final class JavaSessionHook {
                     activeReplayPlan = null;
                     ctx.close();
                 } else if (plan.complete()) {
-                    activeReplayPlan = null;
+                    finishReplay(ctx, plan);
                 }
                 return packets.size();
             } catch (RuntimeException exception) {
@@ -308,6 +315,8 @@ final class JavaSessionHook {
             if (log != null) log.error("[RealCoords] replay failed; closing downstream session to avoid partial world state", exception);
             plan.abort();
             if (plan == activeReplayPlan) activeReplayPlan = null;
+            cancelReplayTasks();
+            syntheticResetPendingReplay = false;
             ctx.close();
         }
 
@@ -318,6 +327,7 @@ final class JavaSessionHook {
             if (plan == activeReplayPlan) {
                 plan.abort();
                 activeReplayPlan = null;
+                cancelReplayTasks();
                 ctx.close();
             }
         }
@@ -408,6 +418,94 @@ final class JavaSessionHook {
             super.channelRead(ctx, message);
         }
 
+        private int allocateSyntheticTeleportId() {
+            int id = nextSyntheticTeleportId++;
+            if (nextSyntheticTeleportId >= 0) nextSyntheticTeleportId = Integer.MIN_VALUE;
+            return id;
+        }
+
+        private void startAutomaticReplay(ChannelHandlerContext ctx) {
+            if (!ctx.executor().inEventLoop()) {
+                ctx.executor().execute(() -> startAutomaticReplay(ctx));
+                return;
+            }
+            try {
+                double realX = transform.realX();
+                double realZ = transform.realZ();
+                int chunkX = (int) Math.floor(realX / 16.0);
+                int chunkZ = (int) Math.floor(realZ / 16.0);
+                ReoriginReplayPlan plan = prepareReplayPlan(chunkX, chunkZ, realX, realZ,
+                        transform.entityReplayRadius());
+                replayTimeout = ctx.executor().schedule(() -> {
+                    if (activeReplayPlan == plan) {
+                        if (log != null) log.warning("[RealCoords] replay transaction timed out; closing downstream session");
+                        failReplay(ctx, plan, new IllegalStateException("replay transaction timeout"));
+                    }
+                }, transform.replayTimeoutMillis(plan.chunkCount(), plan.entityPacketCount()), TimeUnit.MILLISECONDS);
+                scheduleReplayBatch(ctx, plan);
+            } catch (RuntimeException exception) {
+                if (log != null) log.error("[RealCoords] unable to start replay transaction; closing downstream session", exception);
+                ctx.close();
+            }
+        }
+
+        private void scheduleReplayBatch(ChannelHandlerContext ctx, ReoriginReplayPlan plan) {
+            if (!ctx.executor().inEventLoop()) {
+                ctx.executor().execute(() -> scheduleReplayBatch(ctx, plan));
+                return;
+            }
+            if (plan != activeReplayPlan || !ctx.channel().isActive()) return;
+            try {
+                switch (plan.stage()) {
+                    case CHUNKS -> replayChunkBatch(ctx, plan, transform.replayBatchSize());
+                    case ENTITIES -> replayEntityBatch(ctx, plan, transform.entityReplayBatchSize());
+                    case GLOBAL_STATE -> replayGlobalState(ctx, plan);
+                    case LIVE_UPDATES -> replayLiveUpdates(ctx, plan, 256);
+                    case COMPLETE -> {
+                        finishReplay(ctx, plan);
+                        return;
+                    }
+                    case ABORTED -> {
+                        failReplay(ctx, plan, new IllegalStateException("replay plan aborted"));
+                        return;
+                    }
+                }
+                if (plan.complete()) {
+                    finishReplay(ctx, plan);
+                } else if (plan.aborted()) {
+                    failReplay(ctx, plan, new IllegalStateException("replay plan aborted"));
+                } else if (plan == activeReplayPlan) {
+                    replayBatchTask = ctx.executor().schedule(
+                            () -> scheduleReplayBatch(ctx, plan), 50, TimeUnit.MILLISECONDS);
+                }
+            } catch (RuntimeException exception) {
+                failReplay(ctx, plan, exception);
+            }
+        }
+
+        private void finishReplay(ChannelHandlerContext ctx, ReoriginReplayPlan plan) {
+            if (plan != activeReplayPlan || !plan.complete()) return;
+            activeReplayPlan = null;
+            syntheticResetPendingReplay = false;
+            cancelReplayTasks();
+            if (log != null) log.info("[RealCoords] live re-origin replay completed; movement unfrozen");
+        }
+
+        private void cancelReplayTasks() {
+            ScheduledFuture<?> batch = replayBatchTask;
+            replayBatchTask = null;
+            if (batch != null) batch.cancel(false);
+            ScheduledFuture<?> timeout = replayTimeout;
+            replayTimeout = null;
+            if (timeout != null) timeout.cancel(false);
+        }
+
+        private static boolean isMovementPacket(Packet packet) {
+            String name = packet.getClass().getSimpleName();
+            return name.startsWith("ServerboundMovePlayer")
+                    || name.equals("ServerboundMoveVehiclePacket");
+        }
+
         private static boolean isReplaySensitive(Packet packet) {
             String packageName = packet.getClass().getPackageName();
             String className = packet.getClass().getSimpleName();
@@ -426,11 +524,31 @@ final class JavaSessionHook {
             }
             if (message instanceof Packet packet) {
                 if (syntheticResetGate.shouldSuppress(packet)) {
-                    if (!syntheticResetGate.active()) cancelSyntheticResetTimeout();
+                    if (!syntheticResetGate.active()) {
+                        cancelSyntheticResetTimeout();
+                        if (syntheticResetPendingReplay) {
+                            syntheticResetPendingReplay = false;
+                            startAutomaticReplay(ctx);
+                        }
+                    }
+                    promise.setSuccess();
+                    return;
+                }
+                if ((syntheticResetGate.active() || activeReplayPlan != null) && isMovementPacket(packet)) {
                     promise.setSuccess();
                     return;
                 }
                 Packet transformed = transform.serverbound(packet);
+                JavaOriginState.Snapshot movementOriginChange = transform.takeOriginChange();
+                if (movementOriginChange != null && movementOriginChange.changed()) {
+                    promise.setSuccess();
+                    int reservedTeleportId = allocateSyntheticTeleportId();
+                    if (injectSyntheticReset(ctx, reservedTeleportId) == 0) {
+                        if (log != null) log.warning("[RealCoords] unable to begin live re-origin reset; closing downstream session");
+                        ctx.close();
+                    }
+                    return;
+                }
                 if (transformed != null) {
                     super.write(ctx, transformed, promise);
                 } else {
