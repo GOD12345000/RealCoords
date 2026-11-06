@@ -279,8 +279,8 @@ final class JavaPacketTransform {
         if (packet instanceof ClientboundMerchantOffersPacket merchant) {
             List<VillagerTrade> offers = new ArrayList<>();
             for (VillagerTrade trade : merchant.getOffers()) {
-                offers.add(new VillagerTrade(trade.getItemCostA(), shiftItemStack(trade.getResult()),
-                        trade.getItemCostB(), trade.isOutOfStock(), trade.getUses(), trade.getMaxUses(),
+                offers.add(new VillagerTrade(shiftItemCost(trade.getItemCostA()), shiftItemStack(trade.getResult()),
+                        shiftItemCost(trade.getItemCostB()), trade.isOutOfStock(), trade.getUses(), trade.getMaxUses(),
                         trade.getXp(), trade.getSpecialPriceDiff(), trade.getPriceMultiplier(), trade.getDemand()));
             }
             return merchant.withOffers(offers);
@@ -424,12 +424,25 @@ final class JavaPacketTransform {
 
     private ItemStack shiftItemStack(ItemStack item) {
         if (item == null || item.getDataComponentsPatch() == null) return item;
-        DataComponents components = item.getDataComponentsPatch();
+        DataComponents shifted = shiftComponents(item.getDataComponentsPatch());
+        return shifted == item.getDataComponentsPatch()
+                ? item : new ItemStack(item.getId(), item.getAmount(), shifted);
+    }
+
+    private DataComponents shiftComponents(DataComponents components) {
         LodestoneTracker tracker = components.get(DataComponentTypes.LODESTONE_TRACKER);
-        if (tracker == null || tracker.getPos() == null) return item;
+        if (tracker == null || tracker.getPos() == null) return components;
         DataComponents shifted = components.clone();
         shifted.put(DataComponentTypes.LODESTONE_TRACKER, tracker.withPos(shiftGlobalPos(tracker.getPos())));
-        return new ItemStack(item.getId(), item.getAmount(), shifted);
+        return shifted;
+    }
+
+    private VillagerTrade.ItemCost shiftItemCost(VillagerTrade.ItemCost cost) {
+        if (cost == null || cost.components() == null || cost.components().isEmpty()) return cost;
+        DataComponents components = new DataComponents(new java.util.HashMap<>(cost.components()));
+        DataComponents shifted = shiftComponents(components);
+        if (shifted == components) return cost;
+        return new VillagerTrade.ItemCost(cost.itemId(), cost.count(), shifted.getDataComponents());
     }
 
     private Particle shiftParticle(Particle particle) {
