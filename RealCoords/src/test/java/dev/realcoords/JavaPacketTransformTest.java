@@ -120,7 +120,7 @@ class JavaPacketTransformTest {
         for (int step = 1; step <= 1000 && !shifted; step++) {
             realX += 60;
             ServerboundMovePlayerPosPacket move = new ServerboundMovePlayerPosPacket(
-                    realX - transform.offsetX(), 70, -17_000_000 - transform.offsetZ(), true);
+                    true, false, realX - transform.offsetX(), 70, -17_000_000 - transform.offsetZ());
             Packet forwarded = transform.serverbound(move);
             JavaOriginState.Snapshot change = transform.takeOriginChange();
             if (change != null && change.changed()) {
