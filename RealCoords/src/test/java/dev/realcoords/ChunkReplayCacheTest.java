@@ -100,11 +100,11 @@ class ChunkReplayCacheTest {
         ChunkReplayCache cache = new ChunkReplayCache(4, 1024, false);
         assertTrue(cache.put(2, -3, new byte[]{10, 11}));
         assertTrue(cache.putOverlay(2, -3, ChunkReplayCache.OverlayType.BLOCK_UPDATE,
-                0x0000000200000003L, new byte[]{1}));
+                new ChunkReplayCache.BlockPos(2, 64, 3), new byte[]{1}));
         assertTrue(cache.putOverlay(2, -3, ChunkReplayCache.OverlayType.BLOCK_UPDATE,
-                0x0000000200000003L, new byte[]{2}));
+                new ChunkReplayCache.BlockPos(2, 64, 3), new byte[]{2}));
         assertTrue(cache.putOverlay(2, -3, ChunkReplayCache.OverlayType.BLOCK_ENTITY,
-                0x0000000200000003L, new byte[]{3}));
+                new ChunkReplayCache.BlockPos(2, 64, 3), new byte[]{3}));
 
         ChunkReplayCache.ReplayChunk replay = cache.get(2, -3);
         assertArrayEquals(new byte[]{10, 11}, replay.payload());
