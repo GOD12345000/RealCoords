@@ -68,7 +68,11 @@ final class ChunkReplayCache {
 
         ChunkPos key = new ChunkPos(chunkX, chunkZ);
         StoredChunk previous = chunks.remove(key);
-        if (previous != null) storedBytes -= previous.memorySize();
+        if (previous != null) {
+            storedBytes -= previous.memorySize();
+            // A newly received base chunk is newer than all previously captured overlays.
+            subtractOverlays(key);
+        }
         chunks.put(key, replacement);
         storedBytes += replacement.memorySize();
         evictToBudget();
