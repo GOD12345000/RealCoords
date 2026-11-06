@@ -206,6 +206,21 @@ final class JavaSessionHook {
             if (timeout != null) timeout.cancel(false);
         }
 
+        int injectSyntheticResetRespawns(ChannelHandlerContext ctx, int reservedTeleportId) {
+            if (!ctx.executor().inEventLoop()) {
+                throw new IllegalStateException("Synthetic reset must run on the downstream channel event loop");
+            }
+            var respawns = transform.syntheticResetRespawns();
+            if (respawns.size() != 2 || !beginSyntheticReset(reservedTeleportId)) return 0;
+            try {
+                for (Packet respawn : respawns) ctx.fireChannelRead(respawn);
+                return respawns.size();
+            } catch (RuntimeException exception) {
+                abortSyntheticReset();
+                throw exception;
+            }
+        }
+
         int replayCachedChunks(ChannelHandlerContext ctx, int centerChunkX, int centerChunkZ, int limit) {
             if (!ctx.executor().inEventLoop()) {
                 throw new IllegalStateException("Cached chunk replay must run on the downstream channel event loop");
