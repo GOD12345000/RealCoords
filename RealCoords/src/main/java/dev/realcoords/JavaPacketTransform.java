@@ -460,6 +460,10 @@ final class JavaPacketTransform {
         return new DeathPositionUpdate(pendingDeathPositionUpdate);
     }
 
+    int syntheticAckTimeoutMillis() {
+        return config == null ? 3000 : Math.max(250, config.ackTimeoutMs);
+    }
+
     int cachedChunkCount() {
         return chunkReplayCache == null ? 0 : chunkReplayCache.size();
     }
