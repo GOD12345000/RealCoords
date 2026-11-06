@@ -9,7 +9,7 @@
 **Java Netty pipeline 可以攔截並替換兩個方向的 MCProtocolLib `Packet`，技術路徑可行。**  
 不應使用 `SessionListener.packetReceived` 作為封包改寫點；它是通知回呼，沒有回傳／替換封包的介面。應在解碼後、MCProtocolLib 的 `manager` handler 前插入 `ChannelDuplexHandler`。
 
-但有一個重要生命週期限制：**`SessionLoginEvent` 發生時，Java downstream session 尚未建立**。因此不能在目前的 `onLogin` 回呼中立即讀取 channel 並安裝 handler。後續實作必須先取得建立後的 downstream session，再於其 `ConnectedEvent` 時安裝（若已連線則在 event loop 上立即安裝），並以首包日誌驗證安裝時序。若無法保證在第一個遊戲封包前安裝，必須 fail closed，不可默默啟用座標轉換。
+但有一個重要生命週期限制：**`SessionLoginEvent` 發生時，Java downstream session 尚未建立**。因此不能在目前的 `onLogin` 回呼中立即讀取 channel 並安裝 handler。目前實作在 `SessionLoginEvent` 後以短間隔輪詢取得 downstream；取得後先註冊 `SessionListener`，再檢查連線狀態，於 `ConnectedEvent` 回呼中或已連線時安裝。安裝時若不在 channel event loop，會排入該 event loop。仍須以實機首包日誌驗證這個輪詢窗口沒有錯過首批遊戲封包。若無法保證在第一個遊戲封包前安裝，必須 fail closed，不可默默啟用座標轉換。
 
 ## 1. GeyserSession / DownstreamSession / Session 實作
 
@@ -69,7 +69,7 @@ Geyser 的 `GeyserSession#connectDownstream()` 執行順序是：
 
 所以在 `SessionLoginEvent` callback 內，`getDownstream()` 尚未建立；直接安裝會失敗。此事件可作為「開始追蹤該玩家 downstream」的起點，不能視為 channel 已存在。
 
-MCProtocolLib 的 `NetworkSession#channelActive` 在 channel 啟用時先保存 channel，接著 fire `ConnectedEvent`，最後 flush pending queue。建議在 downstream 建立後註冊一個 `SessionListener`，於 `connected()` 回呼內、同一 channel event loop 上安裝 handler。若註冊時 session 已 connected，則直接在 channel event loop 安裝。這比等待 `SessionJoinEvent` 安全；目前 Geyser 2.12.1-SNAPSHOT 的 `GeyserSession` 連線程式碼沒有使用 `SessionJoinEvent` 作為 downstream channel lifecycle hook。
+MCProtocolLib 的 `NetworkSession#channelActive` 在 channel 啟用時先保存 channel，接著 fire `ConnectedEvent`，最後 flush pending queue。目前 `JavaSessionHook` 在 `SessionLoginEvent` 後每 1 ms 輪詢 downstream；一旦取得 session，先註冊 `SessionListener`，再檢查 `isConnected()`，以免檢查與註冊之間漏掉 `channelActive`。`connected()` 回呼內若已在 channel event loop 就 inline 安裝，否則排入 channel event loop。若發現 session 已連線，則走立即安裝路徑。這比等待 `SessionJoinEvent` 安全；目前 Geyser 2.12.1-SNAPSHOT 的 `GeyserSession` 連線程式碼沒有使用 `SessionJoinEvent` 作為 downstream channel lifecycle hook。
 
 **時序驗收條件：** 安裝時輸出 pipeline names；handler 分別對第一個 inbound 與 outbound MCProtocolLib packet 輸出一行日誌。若第一個遊戲封包已先抵達 Geyser adapter，或無法取得 manager 前的 handler 位置，必須停用 Java layer 並記錄錯誤，不能把未轉換封包交給 Geyser。
 
@@ -102,3 +102,13 @@ Java hook 安裝後應輸出：
 - MCProtocolLib `NetworkConstants`：`protocol/src/main/java/org/geysermc/mcprotocollib/network/NetworkConstants.java`
 
 > 版本註記：本 repo 以 Maven snapshot `2.12.1-SNAPSHOT` 編譯；上游原始碼結構依 Geyser／MCProtocolLib 對應 source tree 檢查。最終 API 相容性仍以本 repo 的 Gradle compile/test 結果為準，不宣稱已做 Velocity 實機測試。
+
+
+## 7. 實作狀態（2026-11-06）
+
+- `JavaSessionHook` 已插入 Java downstream 的 `manager` 前，對 inbound clientbound 與 outbound serverbound `Packet` 做實例替換。
+- `JavaPacketTransform` 已覆蓋玩家位置、實體位置同步／傳送／生成、區塊與光照／biome、方塊更新、方塊實體、區塊事件、粒子、聲音、爆炸、世界邊界、出生點、部分 metadata，以及玩家／載具移動與部分方塊互動。
+- `JavaBedrockAuxHook` 僅處理 ActionBar、原版座標 gamerule 與真實座標追蹤；不再做第二次座標轉換。
+- 玩家 serverbound 位置在加回偏移後會套用 `safety.max-serverbound-jump`，不合理的玩家移動封包會被丟棄。
+- Java 模式尚未涵蓋所有世界座標封包；尤其是 login／respawn 的 `lastDeathPos` 在新原點尚未由後續絕對玩家位置決定前無法正確平移。這類資料需額外設計，不可視為已支援。
+- CI 與單元測試不等同實機驗證；首包安裝時序、遊戲內封包覆蓋與行為仍待測試世界確認。
