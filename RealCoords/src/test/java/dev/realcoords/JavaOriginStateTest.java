@@ -41,6 +41,19 @@ class JavaOriginStateTest {
     }
 
     @Test
+    void boundaryJitterWithinViewDistanceDoesNotRepeatedlyShiftOrigin() {
+        JavaOriginState.Snapshot first = state.absolutePosition(49_999, 49_999, 10);
+        JavaOriginState.Snapshot overThreshold = state.absolutePosition(50_001, 50_001, 10);
+        JavaOriginState.Snapshot back = state.absolutePosition(49_998, 49_998, 10);
+
+        assertFalse(first.changed());
+        assertFalse(overThreshold.changed());
+        assertFalse(back.changed());
+        assertEquals(0, back.offsetX());
+        assertEquals(0, back.offsetZ());
+    }
+
+    @Test
     void farTeleportChangesOriginBeforePositionIsForwarded() {
         state.absolutePosition(100_000, 100_000, 10);
 
