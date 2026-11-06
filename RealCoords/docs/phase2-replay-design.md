@@ -1,6 +1,6 @@
 # Phase 2: live re-origin and Geyser state replay design
 
-Status: partial implementation. Packet snapshotting and bounded chunk/update capture are implemented; replay and live re-origin are still disabled.
+Status: partial implementation. Packet snapshotting, bounded chunk/update capture, packet reconstruction, replay dispatch, and a scoped acknowledgement gate are implemented. Synthetic reset orchestration and continuous live re-origin remain disabled.
 
 ## Verified Geyser reset behavior
 
@@ -43,7 +43,7 @@ The Bedrock dimension transition acknowledgement is a Bedrock-side event handled
 The following state must be captured or explicitly proven to be re-sent after a synthetic reset:
 
 1. **Chunks (capture implemented):** complete original `ClientboundLevelChunkWithLightPacket` snapshots keyed by real chunk X/Z, including chunk bytes, heightmaps, embedded block entities and light data. Deflate compression, LRU chunk-count eviction and a per-player byte budget are enforced. Standalone light updates and per-chunk biome packets are captured as overlays.
-2. **Block overlays (partially implemented):** latest single-block updates, section-block updates (expanded into individual block snapshots), and block-entity updates are captured after the base chunk. A newer base chunk invalidates older overlays. Block events and block-destruction state are not captured yet. Overlay replay is not wired yet.
+2. **Block overlays (partially implemented):** latest single-block updates, section-block updates (expanded into individual block snapshots), and block-entity updates are captured after the base chunk. A newer base chunk invalidates older overlays. Block events and block-destruction state are not captured yet. Overlay replay is implemented in the packet reconstruction path and follows each base chunk; it is not yet triggered by a synthetic world reset.
 3. **Entities:** latest add/spawn packet plus latest metadata, attributes, equipment, effects, passengers, links and position/orientation. Remove all records on entity removal. Replaying only AddEntity is insufficient for mobs and item frames.
 4. **Global world state:** world border, default spawn, time, weather, difficulty/game mode, teams/objectives where relevant, and other state Geyser resets or does not automatically re-request.
 5. **Player/session state:** current real position, rotation, velocity, dimension/world identity, teleport IDs, inventory state and effect state.
@@ -65,13 +65,13 @@ The transaction is intentionally not enabled until every stage is testable:
 
 - `JavaPacketSnapshot` uses each MCProtocolLib packet's own serializer and ByteBuf constructor for lossless snapshots; it does not stringify or manually rebuild packet fields.
 - `JavaPacketTransform` captures chunk packets before coordinate rewriting, and captures later block/section/block-entity/light updates under their real chunk coordinates.
-- The cache is currently observational only: it warms from the beginning of the Java session (before the first origin threshold) and retains recent chunks under the configured per-player bounds. No cached packet is injected back into Geyser yet, and no synthetic reset or continuous movement re-origin is active.
+- The cache warms from the beginning of the Java session and retains recent chunks under configured per-player bounds. `JavaPacketTransform.replayCachedChunks` reconstructs a bounded nearest-first batch using the MCProtocolLib packet codecs, transforms it into current local coordinates, and appends captured overlays after each base chunk. `JavaSessionHook` can inject such a batch into Geyser's inbound pipeline on the downstream channel event loop. This dispatch is not yet called by a reset transaction.
 - Chunk byte accounting counts stored compressed/uncompressed payload arrays. Overlay accounting adds payload bytes plus a fixed per-entry estimate. This is a bounded accounting budget, not an exact JVM heap measurement.
 
 ## Safety gates before enabling
 
 - No chunk or entity replay until bounded memory accounting and eviction tests pass.
-- No synthetic reset until EmbeddedChannel tests prove exact response suppression and prove ordinary teleport/player-loaded packets pass through.
+- The acknowledgement gate suppresses only one expected `ServerboundPlayerLoadedPacket` and the exact reserved teleport ID, and EmbeddedChannel tests cover unrelated acknowledgements and normal packets. A bounded timeout/abort and end-to-end synthetic reset sequencing are still required before use.
 - No movement unfreeze while a replay batch is incomplete.
 - Any timeout, disconnect, missing acknowledgement, or replay overflow aborts the transaction without forwarding synthetic packets to the backend.
 - origin-shift.shift-while-moving remains false by default until full CI coverage and manual acceptance are available.
