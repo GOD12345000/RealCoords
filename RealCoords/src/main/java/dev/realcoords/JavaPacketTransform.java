@@ -535,12 +535,16 @@ final class JavaPacketTransform {
      * the downstream channel event loop.
      */
     List<Packet> replayCachedChunks(int centerChunkX, int centerChunkZ, int limit) {
-        if (chunkReplayCache == null || limit <= 0) return List.of();
+        return replayCachedChunks(centerChunkX, centerChunkZ, 0, limit);
+    }
+
+    List<Packet> replayCachedChunks(int centerChunkX, int centerChunkZ, int startIndex, int limit) {
+        if (chunkReplayCache == null || limit <= 0 || startIndex < 0) return List.of();
         List<Packet> replay = new ArrayList<>();
         replayingCachedPackets = true;
         try {
             for (ChunkReplayCache.ReplayChunk chunk :
-                    chunkReplayCache.snapshotNearestFirst(centerChunkX, centerChunkZ, limit)) {
+                    chunkReplayCache.snapshotNearestFirst(centerChunkX, centerChunkZ, startIndex, limit)) {
                 ClientboundLevelChunkWithLightPacket base = JavaPacketSnapshot.deserialize(
                         ClientboundLevelChunkWithLightPacket.class, chunk.payload());
                 replay.add(clientbound(base));
