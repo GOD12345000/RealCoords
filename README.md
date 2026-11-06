@@ -283,9 +283,10 @@ Push 到 main、提交 Pull Request，或手動執行 **Actions → Build RealCo
 ### 已知限制／風險
 
 1. **未完整轉換的封包**：Java 模式目前只改寫已明確支援的封包。尚未處理的絕對座標封包、地圖資料與部分特殊封包，可能在偏移狀態下錯位；login／respawn 的 `lastDeathPos` 暫時保持原始座標，尚未平移。命令方塊、結構方塊與拼圖方塊位置已加入轉換，但仍需實機核對。
+2. **Geyser 浮點精度尚待實機驗證**：Java 模式會在 MCProtocolLib 封包進入 Geyser translator 前先平移座標，設計上可避免 Geyser 將約 ±2,300 萬的 double 轉成 float 時發生量化；但仍需在實際伺服器確認。
 3. **實體朝向**：部分實體重新送出時，朝向可能暫時歸零，直到收到下一次移動更新。
 4. **載具**：騎乘載具時發生原點切換，可能短暫抖動。
-5. **區塊快取**：快取上限是每位玩家各自計算；多人使用時需實際監控整體記憶體。
+5. **區塊快取**：快取上限是每位玩家各自計算；多人使用時需實際監控整體記憶體（此項主要適用於舊 Bedrock 模式）。
 6. **內部 API 相依**：封包類別與欄位可能隨 Geyser／Cloudburst Protocol 更新而變動。建置成功不代表執行時行為一定相容。
 
 以上限制是目前已知的開發狀態，不代表每一項都已在所有版本重現；請以測試結果與 issue 回報補充。
@@ -298,11 +299,12 @@ Push 到 main、提交 Pull Request，或手動執行 **Actions → Build RealCo
 - 確認 Geyser 本體已成功載入。
 - 完整重啟 Geyser／Velocity，查看 extension 載入錯誤。
 
-### 有載入，但沒有 hook active
+### 有載入，但 Java hook 沒有安裝
 
 - 確認是 Bedrock 玩家經由這個 Geyser 實例連線。
-- 暫時開啟 safety.debug-log，查看封包管線掛載訊息。
-- 提供從玩家登入開始的完整相關 log。
+- Java 模式應看到 `Java coordinate transform installed`、`first clientbound packet` 與 `first serverbound packet` 日誌。
+- 若使用舊 Bedrock 模式，則查看舊版 `hook active` 訊息。
+- 若 Java hook 逾時或找不到 manager handler，請提供從玩家登入開始的完整相關 log。
 
 ### 偏移後區塊或互動異常
 
