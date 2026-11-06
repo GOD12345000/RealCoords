@@ -97,7 +97,12 @@ class JavaPacketTransformTest {
     @Test
     void movementObservedDuringReplayUpdatesBaselineWithoutShiftingAgain() {
         ShiftConfig config = new ShiftConfig();
-        config.dims.put(0, new ShiftConfig.Dim());
+        ShiftConfig.Dim overworld = new ShiftConfig.Dim();
+        // Keep this test's deliberately short travel scenario independent of
+        // the production default (100,000 blocks).
+        overworld.trigger = 50_000;
+        overworld.reset = 20_000;
+        config.dims.put(0, overworld);
         config.shiftWhileMoving = true;
         config.cooldownMs = 0;
         JavaPacketTransform transform = new JavaPacketTransform(config);
