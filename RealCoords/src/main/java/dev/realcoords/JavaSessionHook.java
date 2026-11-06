@@ -185,7 +185,7 @@ final class JavaSessionHook {
             if (ctx == null || !ctx.executor().inEventLoop()) {
                 throw new IllegalStateException("Synthetic reset must begin on the downstream channel event loop");
             }
-            if (!syntheticResetGate.begin(reservedTeleportId)) return false;
+            if (!syntheticResetGate.begin(reservedTeleportId, 2)) return false;
             cancelSyntheticResetTimeout();
             syntheticResetTimeout = ctx.executor().schedule(() -> {
                 syntheticResetGate.abort();
