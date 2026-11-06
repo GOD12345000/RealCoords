@@ -78,6 +78,7 @@ import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.borde
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.border.ClientboundInitializeBorderPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundMovePlayerPosPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundMovePlayerPosRotPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundMovePlayerRotPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.level.ServerboundMoveVehiclePacket;
 import org.geysermc.mcprotocollib.protocol.data.game.chunk.ChunkBiomeData;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundUseItemOnPacket;
@@ -646,6 +647,39 @@ final class JavaPacketTransform {
             return move.withX(realX).withZ(realZ);
         }
         return packet;
+    }
+
+    boolean observeMovementDuringReplay(Packet packet) {
+        if (packet instanceof ServerboundMoveVehiclePacket move) {
+            Vector3d position = move.getPosition();
+            if (!origin.observeServerboundPosition(position.getX(), position.getZ(), maxServerboundJump)) return false;
+            lastPlayerY = position.getY();
+            return true;
+        }
+        if (packet instanceof ServerboundMovePlayerPosPacket move) {
+            double realX = move.getX() + origin.offsetX();
+            double realZ = move.getZ() + origin.offsetZ();
+            if (!origin.observeServerboundPosition(realX, realZ, maxServerboundJump)) return false;
+            lastPlayerY = move.getY();
+            hasPlayerPosition = true;
+            return true;
+        }
+        if (packet instanceof ServerboundMovePlayerPosRotPacket move) {
+            double realX = move.getX() + origin.offsetX();
+            double realZ = move.getZ() + origin.offsetZ();
+            if (!origin.observeServerboundPosition(realX, realZ, maxServerboundJump)) return false;
+            lastPlayerY = move.getY();
+            lastPlayerYaw = move.getYaw();
+            lastPlayerPitch = move.getPitch();
+            hasPlayerPosition = true;
+            return true;
+        }
+        if (packet instanceof ServerboundMovePlayerRotPacket move) {
+            lastPlayerYaw = move.getYaw();
+            lastPlayerPitch = move.getPitch();
+            return true;
+        }
+        return false;
     }
 
     private boolean acceptMovementPosition(double realX, double realZ) {
