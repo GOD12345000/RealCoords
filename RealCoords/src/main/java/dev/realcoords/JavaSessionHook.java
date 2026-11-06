@@ -138,7 +138,7 @@ final class JavaSessionHook {
                 return;
             }
 
-            JavaPacketTransformHandler handler = new JavaPacketTransformHandler(new JavaPacketTransform(origin), log);
+            JavaPacketTransformHandler handler = new JavaPacketTransformHandler(new JavaPacketTransform(origin, config.maxJump), log);
             pipeline.addBefore(NetworkConstants.MANAGER_NAME, HANDLER_NAME, handler);
             log.info("[RealCoords] Java coordinate transform installed; pipeline=" + pipeline.names());
         };
@@ -183,7 +183,13 @@ final class JavaSessionHook {
                 log.info("[RealCoords] Java hook first serverbound packet: " + packet.getClass().getName());
             }
             if (message instanceof Packet packet) {
-                super.write(ctx, transform.serverbound(packet), promise);
+                Packet transformed = transform.serverbound(packet);
+                if (transformed != null) {
+                    super.write(ctx, transformed, promise);
+                } else {
+                    promise.setSuccess();
+                    log.warning("[RealCoords] dropped an implausible Java serverbound player movement packet");
+                }
                 return;
             }
             super.write(ctx, message, promise);
