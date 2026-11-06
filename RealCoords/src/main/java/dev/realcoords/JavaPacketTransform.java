@@ -110,9 +110,8 @@ final class JavaPacketTransform {
         if (packet instanceof ClientboundPlayerPositionPacket position) {
             boolean relativeX = position.getRelatives().contains(PositionElement.X);
             boolean relativeZ = position.getRelatives().contains(PositionElement.Z);
-            if (!relativeX && !relativeZ) {
-                origin.absolutePosition(position.getPosition().getX(), position.getPosition().getZ(), viewDistanceChunks);
-            }
+            origin.absolutePosition(position.getPosition().getX(), position.getPosition().getZ(),
+                    viewDistanceChunks, !relativeX, !relativeZ);
             Vector3d p = position.getPosition();
             return position.withPosition(Vector3d.from(
                     relativeX ? p.getX() : p.getX() - origin.offsetX(),
@@ -390,11 +389,12 @@ final class JavaPacketTransform {
     }
 
     private PlayerSpawnInfo shiftSpawnInfo(PlayerSpawnInfo info) {
-        GlobalPos death = info.getLastDeathPos();
-        GlobalPos shiftedDeath = shiftGlobalPos(death);
+        // The new origin is selected only after the following absolute player-position
+        // packet. Do not apply the previous origin to lastDeathPos during login/respawn.
+        // This field remains a documented limitation until it can be deferred safely.
         return new PlayerSpawnInfo(info.getDimension(), info.getWorldName(), info.getHashedSeed(),
                 info.getGameMode(), info.getPreviousGamemode(), info.isDebug(), info.isFlat(),
-                shiftedDeath, info.getPortalCooldown(), info.getSeaLevel());
+                info.getLastDeathPos(), info.getPortalCooldown(), info.getSeaLevel());
     }
 
     private GlobalPos shiftGlobalPos(GlobalPos pos) {
