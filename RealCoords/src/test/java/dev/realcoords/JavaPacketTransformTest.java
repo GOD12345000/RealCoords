@@ -135,9 +135,11 @@ class JavaPacketTransformTest {
         ServerboundAcceptTeleportationPacket restored = assertInstanceOf(
                 ServerboundAcceptTeleportationPacket.class, transform.serverbound(acknowledgement));
 
-        assertEquals(23_000_125.5, restored.getX());
+        assertNotEquals(0, transform.offsetX());
+        assertNotEquals(0, transform.offsetZ());
+        assertEquals(125.5 + transform.offsetX(), restored.getX());
         assertEquals(71.25, restored.getY());
-        assertEquals(-17_000_084.75, restored.getZ());
+        assertEquals(-84.75 + transform.offsetZ(), restored.getZ());
         assertEquals(42, restored.getId());
         assertEquals(90, restored.getYRot());
         assertEquals(15, restored.getXRot());
