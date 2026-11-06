@@ -13,14 +13,20 @@ import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.level.Serve
  */
 final class SyntheticResetGate {
     private boolean active;
-    private boolean playerLoadedPending;
+    private int playerLoadedPacketsPending;
     private boolean teleportAckPending;
     private int teleportId;
 
     boolean begin(int reservedTeleportId) {
         if (active) return false;
         active = true;
-        playerLoadedPending = true;
+        return begin(reservedTeleportId, 1);
+    }
+
+    boolean begin(int reservedTeleportId, int expectedPlayerLoadedPackets) {
+        if (active || expectedPlayerLoadedPackets < 1) return false;
+        active = true;
+        playerLoadedPacketsPending = expectedPlayerLoadedPackets;
         teleportAckPending = true;
         teleportId = reservedTeleportId;
         return true;
@@ -29,8 +35,8 @@ final class SyntheticResetGate {
     boolean shouldSuppress(Packet packet) {
         if (!active) return false;
 
-        if (playerLoadedPending && packet == ServerboundPlayerLoadedPacket.INSTANCE) {
-            playerLoadedPending = false;
+        if (playerLoadedPacketsPending > 0 && packet == ServerboundPlayerLoadedPacket.INSTANCE) {
+            playerLoadedPacketsPending--;
             finishIfComplete();
             return true;
         }
@@ -46,7 +52,7 @@ final class SyntheticResetGate {
 
     void abort() {
         active = false;
-        playerLoadedPending = false;
+        playerLoadedPacketsPending = 0;
         teleportAckPending = false;
         teleportId = 0;
     }
@@ -56,6 +62,6 @@ final class SyntheticResetGate {
     }
 
     private void finishIfComplete() {
-        if (!playerLoadedPending && !teleportAckPending) abort();
+        if (playerLoadedPacketsPending == 0 && !teleportAckPending) abort();
     }
 }
