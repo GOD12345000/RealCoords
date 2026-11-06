@@ -175,6 +175,22 @@ class JavaOriginStateTest {
     }
 
     @Test
+    void liveMovementWaitsUntilReplayCacheIsAvailable() {
+        config.shiftWhileMoving = true;
+        config.cooldownMs = 0;
+        state.absolutePosition(23_000_000, -17_000_000, 10);
+        int offsetX = state.offsetX();
+        int offsetZ = state.offsetZ();
+        for (int step = 1; step <= 1000; step++) {
+            assertTrue(state.acceptServerboundPosition(
+                    23_000_000 + step * 60.0, -17_000_000 + step * 60.0, 64.0, false));
+            assertNull(state.takeMovementOriginChange());
+        }
+        assertEquals(offsetX, state.offsetX());
+        assertEquals(offsetZ, state.offsetZ());
+    }
+
+    @Test
     void liveMovementDoesNotChangeOriginByDefault() {
         state.absolutePosition(23_000_000, -17_000_000, 10);
         int offsetX = state.offsetX();
