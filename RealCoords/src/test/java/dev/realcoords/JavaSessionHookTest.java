@@ -1,7 +1,13 @@
 package dev.realcoords;
 
 import io.netty.channel.embedded.EmbeddedChannel;
+import net.kyori.adventure.key.Key;
+import org.geysermc.mcprotocollib.protocol.data.game.entity.player.GameMode;
+import org.geysermc.mcprotocollib.protocol.data.game.entity.player.PlayerSpawnInfo;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.ClientboundLoginPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.player.ClientboundPlayerPositionPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.ServerboundPlayerLoadedPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.ClientboundRespawnPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.level.ServerboundAcceptTeleportationPacket;
 import org.junit.jupiter.api.Test;
 
@@ -38,6 +44,42 @@ class JavaSessionHookTest {
         // Once both synthetic responses have been consumed, normal packets pass.
         assertTrue(channel.writeOutbound(ServerboundPlayerLoadedPacket.INSTANCE));
         assertSame(ServerboundPlayerLoadedPacket.INSTANCE, channel.readOutbound());
+        channel.finishAndReleaseAll();
+    }
+
+    @Test
+    void injectsBothSyntheticRespawnsIntoGeyserInboundPipeline() {
+        ShiftConfig config = new ShiftConfig();
+        config.dims.put(0, new ShiftConfig.Dim());
+        JavaPacketTransform transform = new JavaPacketTransform(config);
+        JavaSessionHook.JavaPacketTransformHandler handler =
+                new JavaSessionHook.JavaPacketTransformHandler(transform, null, null);
+        EmbeddedChannel channel = new EmbeddedChannel(handler);
+
+        Key world = Key.key("minecraft:overworld");
+        PlayerSpawnInfo spawn = new PlayerSpawnInfo(0, world, 0L, GameMode.SURVIVAL,
+                null, false, false, null, 0, 63);
+        channel.writeInbound(new ClientboundLoginPacket(1, false, new Key[]{world},
+                20, 10, 10, false, true, false, spawn, true, true));
+        channel.writeInbound(new ClientboundPlayerPositionPacket(
+                1, 23_000_000, 70, -17_000_000, 0, 0, 0, 0, 0));
+        while (channel.readInbound() != null) { }
+
+        int injected = handler.injectSyntheticResetRespawns(channel.pipeline().context(handler), 777777);
+        assertEquals(2, injected);
+        ClientboundRespawnPacket temporary = channel.readInbound();
+        ClientboundRespawnPacket restored = channel.readInbound();
+        assertNotNull(temporary);
+        assertNotNull(restored);
+        assertEquals("minecraft:overworld_realcoords_reset",
+                temporary.getCommonPlayerSpawnInfo().getWorldName().asString());
+        assertEquals(world, restored.getCommonPlayerSpawnInfo().getWorldName());
+
+        assertFalse(channel.writeOutbound(ServerboundPlayerLoadedPacket.INSTANCE));
+        assertFalse(channel.writeOutbound(ServerboundPlayerLoadedPacket.INSTANCE));
+        assertFalse(channel.writeOutbound(new ServerboundAcceptTeleportationPacket(
+                777777, 0, 70, 0, 0, 0)));
+        assertFalse(handler.beginSyntheticReset(777778));
         channel.finishAndReleaseAll();
     }
 
