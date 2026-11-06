@@ -3,17 +3,21 @@
 
 origin-shift:
   enabled: true
+  # java：在 Geyser 轉成 float 前轉換；bedrock：舊版相容模式
+  layer: java
+  # Java 模式連續移動／飛行時是否自動重設浮動原點；需啟用區塊快取且附近有快取，預設關閉
+  shift-while-moving: false
   # 偏移量的對齊單位，必須是 16 的倍數（會自動修正）
   alignment: 256
-  # 基岩版客戶端看到的座標超過此值，就把原點移到玩家附近
+  # 真實 X/Z 座標超過此值時，登入／重生／遠距傳送會選擇新原點；啟用 shift-while-moving 時也用於連續移動觸發
   trigger-distance: 50000
   # 真實座標回到此範圍內（且目前有偏移）才歸零。必須小於 trigger-distance（遲滯）
   reset-distance: 20000
-  # 兩次換原點的最短間隔（20 tick = 1 秒）
+  # bedrock 模式兩次換原點的最短間隔；Java 連續移動模式也會使用此冷卻時間
   cooldown-ticks: 100
-  # 換原點／伺服器傳送後，等待客戶端到位的最長時間
+  # bedrock 模式換原點／伺服器傳送後，等待客戶端到位的最長時間
   ack-timeout-ticks: 60
-  # 客戶端位置與預期位置相差在此範圍內視為「已到位」（格）
+  # bedrock 模式下，客戶端位置與預期位置相差在此範圍內視為「已到位」（格）
   ack-tolerance: 4.0
   # 每個維度可單獨覆寫 enabled / trigger-distance / reset-distance / alignment
   dimensions:
@@ -25,21 +29,23 @@ safety:
   # 防呆閘：客戶端單次回報的位置與上一個已知真實座標相差超過此值，
   # 且不在等待傳送到位的狀態，就丟棄該座標（避免被傳送到 0,0 附近）
   max-serverbound-jump: 64.0
-  # 觸發防呆閘後，補送校正封包的最短間隔
+  # bedrock 模式觸發防呆閘後補送校正封包的最短間隔；Java 模式會丟棄異常移動並限制警告頻率
   correction-interval-ticks: 10
   # 輸出較詳細的除錯訊息（首次攔截、換原點細節、管線結構）
   debug-log: false
 
 chunk-cache:
-  # 換原點時要重送區塊，所以需要在記憶體保存已送出的區塊（原始真實座標版）
+  # 保存原始 Java 區塊封包與後續更新，供浮動原點重設／重放使用；Java 自動重設交易由 shift-while-moving 控制，預設關閉
   enabled: true
   # 以 deflate 壓縮保存，省記憶體、略增 CPU
   compress: true
   # 每位玩家最多保存的區塊數
   max-chunks: 2500
+  # 每位玩家快取的記憶體預算（含壓縮後區塊資料與更新覆蓋資料）
+  max-bytes: 33554432
   # 距離觸發值還有多遠（格）就開始保存區塊。必須大於伺服器視距（格）
   activate-margin: 1500
-  # 換原點後每個 tick 重送幾個區塊
+  # 每個重放批次最多處理幾個區塊（shift-while-moving 啟用時由 Java 交易自動排程）
   resend-per-tick: 24
   # 超出視距多少個區塊後從快取移除
   evict-margin-chunks: 4

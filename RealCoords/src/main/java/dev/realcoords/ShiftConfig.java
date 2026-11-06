@@ -21,12 +21,14 @@ final class ShiftConfig {
         int trigger = 50000, reset = 20000, alignment = 256;
     }
 
-    boolean enabled = true, debug;
+    boolean enabled = true, debug, shiftWhileMoving;
+    String layer = "java";
     int cooldownMs = 5000, ackTimeoutMs = 3000, guardIntervalMs = 500;
     double ackTolerance = 4.0, maxJump = 64.0;
 
     boolean cacheEnabled = true, cacheCompress = true;
     int cacheMaxChunks = 2500, cacheMargin = 1500, resendPerTick = 24, evictMarginChunks = 4;
+    long cacheMaxBytes = 32L * 1024 * 1024;
 
     final Map<Integer, Dim> dims = new HashMap<>();
 
@@ -66,6 +68,12 @@ final class ShiftConfig {
         ShiftConfig c = new ShiftConfig();
         Map<String, Object> os = sec(root, "origin-shift");
         c.enabled = bool(os, "enabled", true);
+        c.layer = str(os, "layer", "java").trim().toLowerCase(java.util.Locale.ROOT);
+        c.shiftWhileMoving = bool(os, "shift-while-moving", false);
+        if (!c.layer.equals("java") && !c.layer.equals("bedrock")) {
+            log.warning("[RealCoords] origin-shift.layer 無效，改用 java");
+            c.layer = "java";
+        }
 
         Dim base = new Dim();
         base.alignment = align(num(os, "alignment", 256));
@@ -92,7 +100,8 @@ final class ShiftConfig {
         }
 
         Map<String, Object> sf = sec(root, "safety");
-        c.maxJump = dbl(sf, "max-serverbound-jump", 64.0);
+        double configuredMaxJump = dbl(sf, "max-serverbound-jump", 64.0);
+        c.maxJump = Double.isFinite(configuredMaxJump) ? Math.max(1.0, configuredMaxJump) : 64.0;
         c.guardIntervalMs = num(sf, "correction-interval-ticks", 10) * 50;
         c.debug = bool(sf, "debug-log", false);
 
@@ -100,6 +109,7 @@ final class ShiftConfig {
         c.cacheEnabled = bool(cc, "enabled", true);
         c.cacheCompress = bool(cc, "compress", true);
         c.cacheMaxChunks = Math.max(64, num(cc, "max-chunks", 2500));
+        c.cacheMaxBytes = Math.max(1024L * 1024, longNum(cc, "max-bytes", 32L * 1024 * 1024));
         c.cacheMargin = Math.max(256, num(cc, "activate-margin", 1500));
         c.resendPerTick = Math.max(1, num(cc, "resend-per-tick", 24));
         c.evictMarginChunks = Math.max(0, num(cc, "evict-margin-chunks", 4));
@@ -146,6 +156,10 @@ final class ShiftConfig {
 
     private static int num(Map<String, Object> m, String k, int d) {
         return m.get(k) instanceof Number n ? n.intValue() : d;
+    }
+
+    private static long longNum(Map<String, Object> m, String k, long d) {
+        return m.get(k) instanceof Number n ? n.longValue() : d;
     }
 
     private static double dbl(Map<String, Object> m, String k, double d) {

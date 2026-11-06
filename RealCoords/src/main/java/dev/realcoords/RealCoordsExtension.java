@@ -14,7 +14,7 @@ public class RealCoordsExtension implements Extension {
         try {
             cfg = ShiftConfig.load(this.dataFolder(), getClass(), this.logger());
             this.logger().info("[RealCoords] 已載入設定。origin-shift=" + cfg.enabled
-                    + ", actionbar=" + cfg.abEnabled + ", chunk-cache=" + cfg.cacheEnabled);
+                    + ", layer=" + cfg.layer + ", actionbar=" + cfg.abEnabled + ", chunk-cache=" + cfg.cacheEnabled);
         } catch (Exception e) {
             this.logger().error("[RealCoords] 載入 config.yml 失敗，擴充停用", e);
         }
@@ -24,10 +24,17 @@ public class RealCoordsExtension implements Extension {
     public void onLogin(SessionLoginEvent event) {
         ShiftConfig c = cfg;
         if (c == null || !c.enabled) return;
+        GeyserSession session = (GeyserSession) event.connection();
         try {
-            SessionHook.install((GeyserSession) event.connection(), c, this.logger());
+            if ("java".equals(c.layer)) {
+                JavaOriginState origin = new JavaOriginState(c);
+                JavaSessionHook.install(session, c, origin, this.logger());
+                JavaBedrockAuxHook.install(session, c, origin, this.logger());
+            } else {
+                SessionHook.install(session, c, this.logger());
+            }
         } catch (Throwable t) {
-            this.logger().error("[RealCoords] 無法掛上封包轉換器（該玩家將不套用偏移）", t);
+            this.logger().error("[RealCoords] 無法啟動封包 hook（該玩家將不套用偏移）", t);
         }
     }
 }
