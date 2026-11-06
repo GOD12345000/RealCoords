@@ -5,7 +5,7 @@ origin-shift:
   enabled: true
   # java：在 Geyser 轉成 float 前轉換；bedrock：舊版相容模式
   layer: java
-  # Java 模式連續移動／飛行時是否自動重設浮動原點；預設關閉，完成遊戲內驗證後再開啟
+  # Java 模式連續移動／飛行時是否自動重設浮動原點；需啟用區塊快取且附近有快取，預設關閉
   shift-while-moving: false
   # 偏移量的對齊單位，必須是 16 的倍數（會自動修正）
   alignment: 256
