@@ -65,14 +65,18 @@ final class ShiftConfig {
             Object o = new Yaml().load(r);
             root = o instanceof Map<?, ?> ? cast(o) : new HashMap<>();
         }
+        return parse(root, log::warning);
+    }
 
+    /** Package-visible parser so defaults and validation can be tested without a live Geyser logger. */
+    static ShiftConfig parse(Map<String, Object> root, java.util.function.Consumer<String> warning) {
         ShiftConfig c = new ShiftConfig();
         Map<String, Object> os = sec(root, "origin-shift");
         c.enabled = bool(os, "enabled", true);
         c.layer = str(os, "layer", "java").trim().toLowerCase(java.util.Locale.ROOT);
         c.shiftWhileMoving = bool(os, "shift-while-moving", false);
         if (!c.layer.equals("java") && !c.layer.equals("bedrock")) {
-            log.warning("[RealCoords] origin-shift.layer 無效，改用 java");
+            warning.accept("[RealCoords] origin-shift.layer 無效，改用 java");
             c.layer = "java";
         }
 
@@ -82,11 +86,11 @@ final class ShiftConfig {
         base.reset = Math.max(0, num(os, "reset-distance", 50000));
         c.recenterOnReload = Math.max(0, num(os, "recenter-on-reload", 2048));
         if (base.reset >= base.trigger) {
-            log.warning("[RealCoords] reset-distance 必須小於 trigger-distance，已自動調整");
+            warning.accept("[RealCoords] reset-distance 必須小於 trigger-distance，已自動調整");
             base.reset = base.trigger / 2;
         }
         if (base.trigger > 4_000_000) {
-            log.warning("[RealCoords] trigger-distance > 4,000,000：float ULP 已達 0.25 格以上，座標精度可能明顯下降");
+            warning.accept("[RealCoords] trigger-distance > 4,000,000：float ULP 已達 0.25 格以上，座標精度可能明顯下降");
         }
         c.cooldownMs = num(os, "cooldown-ticks", 100) * 50;
         c.ackTimeoutMs = num(os, "ack-timeout-ticks", 60) * 50;
@@ -102,11 +106,11 @@ final class ShiftConfig {
             x.reset = Math.max(0, num(d, "reset-distance", base.reset));
             x.alignment = align(num(d, "alignment", base.alignment));
             if (x.reset >= x.trigger) {
-                log.warning("[RealCoords] " + names[id] + ": reset-distance 必須小於 trigger-distance，已自動調整");
+                warning.accept("[RealCoords] " + names[id] + ": reset-distance 必須小於 trigger-distance，已自動調整");
                 x.reset = x.trigger / 2;
             }
             if (d.containsKey("trigger-distance") && x.trigger > 4_000_000) {
-                log.warning("[RealCoords] " + names[id] + " trigger-distance > 4,000,000：float ULP 已達 0.25 格以上，座標精度可能明顯下降");
+                warning.accept("[RealCoords] " + names[id] + " trigger-distance > 4,000,000：float ULP 已達 0.25 格以上，座標精度可能明顯下降");
             }
             c.dims.put(id, x);
         }
