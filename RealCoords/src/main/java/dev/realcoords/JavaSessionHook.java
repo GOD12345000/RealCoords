@@ -456,7 +456,7 @@ final class JavaSessionHook {
                         bedrockSpawnWaitDeadlineMs = now + transform.syntheticAckTimeoutMillis() * 2L;
                     }
                     if (now >= bedrockSpawnWaitDeadlineMs) {
-                        failReplay(ctx, plan, new IllegalStateException("Geyser Bedrock dimension transition did not complete"));
+                        failReplay(ctx, plan, new IllegalStateException("Geyser did not enter the spawned state after the synthetic teleport"));
                         return;
                     }
                     replayBatchTask = ctx.executor().schedule(() -> startAutomaticReplay(ctx), 50, TimeUnit.MILLISECONDS);
