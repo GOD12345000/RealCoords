@@ -5,6 +5,9 @@ import org.cloudburstmc.math.vector.Vector3i;
 import org.geysermc.mcprotocollib.network.packet.Packet;
 import org.geysermc.mcprotocollib.protocol.data.game.entity.player.PositionElement;
 import org.geysermc.mcprotocollib.protocol.data.game.entity.player.PlayerSpawnInfo;
+import org.geysermc.mcprotocollib.protocol.data.game.entity.metadata.EntityMetadata;
+import org.geysermc.mcprotocollib.protocol.data.game.entity.metadata.MetadataType;
+import org.geysermc.mcprotocollib.protocol.data.game.entity.metadata.type.ObjectEntityMetadata;
 import org.geysermc.mcprotocollib.protocol.data.game.entity.metadata.GlobalPos;
 import net.kyori.adventure.key.Key;
 import org.geysermc.mcprotocollib.protocol.data.game.level.block.BlockChangeEntry;
@@ -14,6 +17,7 @@ import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.Clie
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundMoveVehiclePacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.player.ClientboundPlayerLookAtPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundEntityPositionSyncPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundSetEntityDataPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundTeleportEntityPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.player.ClientboundPlayerPositionPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundBlockUpdatePacket;
@@ -205,6 +209,9 @@ final class JavaPacketTransform {
             return sign.withPosition(Vector3i.from(p.getX() - origin.offsetX(), p.getY(),
                     p.getZ() - origin.offsetZ()));
         }
+        if (packet instanceof ClientboundSetEntityDataPacket metadata) {
+            return metadata.withMetadata(shiftMetadata(metadata.getMetadata()));
+        }
         if (packet instanceof ClientboundBlockEntityDataPacket blockEntity) {
             Vector3i p = blockEntity.getPosition();
             return blockEntity.withPosition(Vector3i.from(p.getX() - origin.offsetX(), p.getY(),
@@ -299,6 +306,27 @@ final class JavaPacketTransform {
 
     int offsetZ() {
         return origin.offsetZ();
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private EntityMetadata<?, ?>[] shiftMetadata(EntityMetadata<?, ?>[] metadata) {
+        if (metadata == null || (origin.offsetX() == 0 && origin.offsetZ() == 0)) return metadata;
+        EntityMetadata<?, ?>[] shifted = metadata.clone();
+        for (int i = 0; i < shifted.length; i++) {
+            EntityMetadata<?, ?> entry = shifted[i];
+            Object value = entry.getValue();
+            Object replacement = value;
+            if (value instanceof Vector3i position) {
+                replacement = Vector3i.from(position.getX() - origin.offsetX(), position.getY(),
+                        position.getZ() - origin.offsetZ());
+            } else if (value instanceof GlobalPos globalPos) {
+                replacement = shiftGlobalPos(globalPos);
+            }
+            if (replacement != value) {
+                shifted[i] = new ObjectEntityMetadata(entry.getId(), (MetadataType) entry.getType(), replacement);
+            }
+        }
+        return shifted;
     }
 
     private PlayerSpawnInfo shiftSpawnInfo(PlayerSpawnInfo info) {
