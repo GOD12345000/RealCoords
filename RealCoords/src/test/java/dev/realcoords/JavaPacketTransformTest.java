@@ -1,6 +1,7 @@
 package dev.realcoords;
 
 import io.netty.channel.embedded.EmbeddedChannel;
+import net.kyori.adventure.key.Key;
 import org.cloudburstmc.math.vector.Vector3i;
 import org.cloudburstmc.nbt.NbtMap;
 import org.geysermc.mcprotocollib.network.packet.Packet;
@@ -9,12 +10,17 @@ import org.geysermc.mcprotocollib.protocol.data.game.entity.player.Hand;
 import org.geysermc.mcprotocollib.protocol.data.game.entity.object.Direction;
 import org.geysermc.mcprotocollib.protocol.data.game.level.block.BlockChangeEntry;
 import org.geysermc.mcprotocollib.protocol.data.game.level.notify.GameEvent;
+import org.geysermc.mcprotocollib.protocol.data.game.level.waypoint.ChunkWaypointData;
+import org.geysermc.mcprotocollib.protocol.data.game.level.waypoint.TrackedWaypoint;
+import org.geysermc.mcprotocollib.protocol.data.game.level.waypoint.Vec3iWaypointData;
+import org.geysermc.mcprotocollib.protocol.data.game.level.waypoint.WaypointOperation;
 import org.geysermc.mcprotocollib.protocol.data.game.level.notify.RainStrengthValue;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.player.ClientboundPlayerPositionPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundLevelChunkWithLightPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundBlockUpdatePacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundUseItemOnPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundGameEventPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundTrackedWaypointPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundMovePlayerPosPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundMovePlayerPosRotPacket;
 import org.junit.jupiter.api.Test;
@@ -22,6 +28,8 @@ import org.junit.jupiter.api.Test;
 import java.util.BitSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -171,6 +179,38 @@ class JavaPacketTransformTest {
         assertEquals(0.5f, restored.getCursorX());
         assertEquals(1.0f, restored.getCursorY());
         assertEquals(0.5f, restored.getCursorZ());
+    }
+
+    @Test
+    void trackedWaypointBlockAndChunkPositionsAreShifted() {
+        JavaPacketTransform transform = transformer();
+        ClientboundPlayerPositionPacket initial = new ClientboundPlayerPositionPacket(
+                1, 23_000_000, 70, -17_000_000, 0, 0, 0, 0, 0);
+        transform.clientbound(initial);
+        TrackedWaypoint.Icon icon = new TrackedWaypoint.Icon(
+                Key.key("minecraft:default"), Optional.empty());
+
+        TrackedWaypoint blockWaypoint = new TrackedWaypoint(UUID.randomUUID(), null, icon,
+                TrackedWaypoint.Type.VEC3I,
+                new Vec3iWaypointData(Vector3i.from(23_000_010, 64, -16_999_990)));
+        ClientboundTrackedWaypointPacket blockPacket =
+                new ClientboundTrackedWaypointPacket(WaypointOperation.UPDATE, blockWaypoint);
+        ClientboundTrackedWaypointPacket shiftedBlock =
+                (ClientboundTrackedWaypointPacket) transform.clientbound(blockPacket);
+        Vector3i blockPos = ((Vec3iWaypointData) shiftedBlock.getWaypoint().data()).vector();
+        assertEquals(23_000_010 - transform.offsetX(), blockPos.getX());
+        assertEquals(-16_999_990 - transform.offsetZ(), blockPos.getZ());
+
+        TrackedWaypoint chunkWaypoint = new TrackedWaypoint(UUID.randomUUID(), null, icon,
+                TrackedWaypoint.Type.CHUNK,
+                new ChunkWaypointData(23_000_000 / 16, -17_000_000 / 16));
+        ClientboundTrackedWaypointPacket chunkPacket =
+                new ClientboundTrackedWaypointPacket(WaypointOperation.UPDATE, chunkWaypoint);
+        ClientboundTrackedWaypointPacket shiftedChunk =
+                (ClientboundTrackedWaypointPacket) transform.clientbound(chunkPacket);
+        ChunkWaypointData chunk = (ChunkWaypointData) shiftedChunk.getWaypoint().data();
+        assertEquals(23_000_000 / 16 - transform.offsetX() / 16, chunk.chunkX());
+        assertEquals(-17_000_000 / 16 - transform.offsetZ() / 16, chunk.chunkZ());
     }
 
     @Test
