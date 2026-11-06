@@ -536,7 +536,9 @@ final class JavaSessionHook {
                     || packageName.contains(".clientbound.scoreboard")
                     || className.equals("ClientboundChangeDifficultyPacket")
                     || className.equals("ClientboundBossEventPacket")
-                    || className.equals("ClientboundGameRuleValuesPacket");
+                    || className.equals("ClientboundGameRuleValuesPacket")
+                    || className.equals("ClientboundPlayerInfoUpdatePacket")
+                    || className.equals("ClientboundPlayerInfoRemovePacket");
         }
 
         @Override
