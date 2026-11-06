@@ -157,7 +157,7 @@ final class ChunkReplayCache {
         if (updates != null) {
             for (Map.Entry<OverlayKey, StoredOverlay> entry : updates.entrySet()) {
                 OverlayKey key = entry.getKey();
-                result.add(new ReplayOverlay(key.type(), key.positionKey(), entry.getValue().bytes()));
+                result.add(new ReplayOverlay(key.type(), key.position(), entry.getValue().bytes()));
             }
         }
         return new ReplayChunk(pos.x(), pos.z(), decode(stored), result);
