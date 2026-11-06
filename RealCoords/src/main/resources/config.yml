@@ -9,7 +9,7 @@ origin-shift:
   shift-while-moving: false
   # 偏移量的對齊單位，必須是 16 的倍數（會自動修正）
   alignment: 256
-  # 真實 X/Z 座標超過此值時，登入／重生／遠距傳送會選擇靠近玩家的新原點
+  # 真實 X/Z 座標超過此值時，登入／重生／遠距傳送會選擇新原點；啟用 shift-while-moving 時也用於連續移動觸發
   trigger-distance: 50000
   # 真實座標回到此範圍內（且目前有偏移）才歸零。必須小於 trigger-distance（遲滯）
   reset-distance: 20000
@@ -35,7 +35,7 @@ safety:
   debug-log: false
 
 chunk-cache:
-  # 保存原始 Java 區塊封包與後續更新，供浮動原點重設／重放使用；Java 模式已有快照與分批重放核心，但自動重設交易仍未啟用
+  # 保存原始 Java 區塊封包與後續更新，供浮動原點重設／重放使用；Java 自動重設交易由 shift-while-moving 控制，預設關閉
   enabled: true
   # 以 deflate 壓縮保存，省記憶體、略增 CPU
   compress: true
