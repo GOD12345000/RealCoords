@@ -28,6 +28,8 @@ final class EntityReplayCache {
         PASSENGERS
     }
 
+    record Position(double x, double y, double z, float yaw, float pitch, boolean onGround) { }
+
     record ReplayPacket(int entityId, Kind kind, Class<? extends MinecraftPacket> packetType,
                         int subKey, byte[] payload) {
         ReplayPacket {
@@ -51,7 +53,11 @@ final class EntityReplayCache {
         private final EnumMap<Kind, LinkedHashMap<Integer, StoredPacket>> packets =
                 new EnumMap<>(Kind.class);
         private double x;
+        private double y;
         private double z;
+        private float yaw;
+        private float pitch;
+        private boolean onGround;
         private boolean hasPosition;
         private long memorySize;
 
@@ -102,13 +108,37 @@ final class EntityReplayCache {
         return entities.containsKey(entityId);
     }
 
-    synchronized void updatePosition(int entityId, double x, double z) {
+    synchronized void updatePosition(int entityId, double x, double y, double z,
+                                     float yaw, float pitch, boolean onGround) {
         EntityState state = entities.get(entityId);
         if (state != null) {
             state.x = x;
+            state.y = y;
             state.z = z;
+            state.yaw = yaw;
+            state.pitch = pitch;
+            state.onGround = onGround;
             state.hasPosition = true;
         }
+    }
+
+    synchronized void updateDelta(int entityId, double dx, double dy, double dz,
+                                  Float yaw, Float pitch, boolean onGround) {
+        EntityState state = entities.get(entityId);
+        if (state != null && state.hasPosition) {
+            state.x += dx;
+            state.y += dy;
+            state.z += dz;
+            if (yaw != null) state.yaw = yaw;
+            if (pitch != null) state.pitch = pitch;
+            state.onGround = onGround;
+        }
+    }
+
+    synchronized Position position(int entityId) {
+        EntityState state = entities.get(entityId);
+        return state == null || !state.hasPosition ? null
+                : new Position(state.x, state.y, state.z, state.yaw, state.pitch, state.onGround);
     }
 
     synchronized void removeEffect(int entityId, int effectId) {
