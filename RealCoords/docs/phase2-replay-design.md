@@ -1,6 +1,6 @@
 # Phase 2: live re-origin and Geyser state replay design
 
-Status: partial implementation. Packet snapshotting, bounded chunk/update capture, packet reconstruction, replay dispatch, and a scoped, timeout-bounded acknowledgement gate for the two-respawn sequence is implemented. Synthetic reset orchestration and continuous live re-origin remain disabled.
+Status: partial implementation. Packet snapshotting, bounded chunk/update capture, packet reconstruction, replay dispatch, paired temporary/restore respawn packet construction, and a timeout-bounded acknowledgement gate for the two-respawn sequence are implemented. The reset injection helper is available, but automatic reset orchestration and continuous live re-origin remain disabled.
 
 ## Verified Geyser reset behavior
 
@@ -64,14 +64,15 @@ The transaction is intentionally not enabled until every stage is testable:
 ## Current implementation boundary
 
 - `JavaPacketSnapshot` uses each MCProtocolLib packet's own serializer and ByteBuf constructor for lossless snapshots; it does not stringify or manually rebuild packet fields.
-- `JavaPacketTransform` captures chunk packets before coordinate rewriting, and captures later block/section/block-entity/light updates under their real chunk coordinates.
+- `JavaPacketTransform` captures chunk packets before coordinate rewriting, and captures later block/section/block-entity/light/biome updates under their real chunk coordinates.
+- `syntheticResetRespawns` builds a temporary-world-name respawn followed by the original-world-name respawn, preserving the current dimension and shifted death marker. The hook can inject both packets directly into Geyser's inbound pipeline, bypassing the normal transform/cache capture path.
 - The cache warms from the beginning of the Java session and retains recent chunks under configured per-player bounds. `JavaPacketTransform.replayCachedChunks` reconstructs a bounded nearest-first batch using the MCProtocolLib packet codecs, transforms it into current local coordinates, and appends captured overlays after each base chunk. `JavaSessionHook` can inject such a batch into Geyser's inbound pipeline on the downstream channel event loop. This dispatch is not yet called by a reset transaction.
 - Chunk byte accounting counts stored compressed/uncompressed payload arrays. Overlay accounting adds payload bytes plus a fixed per-entry estimate. This is a bounded accounting budget, not an exact JVM heap measurement.
 
 ## Safety gates before enabling
 
 - No chunk or entity replay until bounded memory accounting and eviction tests pass.
-- The acknowledgement gate suppresses the two expected `ServerboundPlayerLoadedPacket` responses and the exact reserved teleport ID. It aborts after the configured acknowledgement timeout, and EmbeddedChannel tests cover unrelated acknowledgements, normal packets, and explicit abort. End-to-end synthetic reset sequencing is still required before use.
+- The acknowledgement gate suppresses the two expected `ServerboundPlayerLoadedPacket` responses and the exact reserved teleport ID. If the reset is aborted or times out after injection, the downstream channel is closed rather than allowing late synthetic acknowledgements to leak to the real server. EmbeddedChannel tests cover unrelated acknowledgements, normal packets, injection order, and fail-closed abort. End-to-end synthetic reset sequencing is still required before use.
 - No movement unfreeze while a replay batch is incomplete.
 - Any timeout, disconnect, missing acknowledgement, or replay overflow aborts the transaction without forwarding synthetic packets to the backend.
 - origin-shift.shift-while-moving remains false by default until full CI coverage and manual acceptance are available.
