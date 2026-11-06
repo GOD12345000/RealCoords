@@ -30,6 +30,13 @@ import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.Clientbound
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.ClientboundUpdateAdvancementsPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.ClientboundRespawnPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundAddEntityPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundRemoveEntitiesPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundUpdateAttributesPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundUpdateMobEffectPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundRemoveMobEffectPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundSetEntityLinkPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundSetPassengersPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundSetEntityMotionPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundMoveVehiclePacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.player.ClientboundPlayerLookAtPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundEntityPositionSyncPacket;
@@ -90,6 +97,7 @@ final class JavaPacketTransform {
     private final double maxServerboundJump;
     private final ShiftConfig config;
     private final ChunkReplayCache chunkReplayCache;
+    private final EntityReplayCache entityReplayCache;
     private boolean replayingCachedPackets;
     private Key currentWorld;
     private PlayerSpawnInfo currentSpawnInfo;
@@ -126,11 +134,14 @@ final class JavaPacketTransform {
         this.config = config;
         this.chunkReplayCache = config != null && config.cacheEnabled
                 ? new ChunkReplayCache(config.cacheMaxChunks, config.cacheMaxBytes, config.cacheCompress) : null;
+        this.entityReplayCache = config != null && config.cacheEnabled
+                ? new EntityReplayCache(512, Math.max(1L << 20, config.cacheMaxBytes / 4)) : null;
     }
 
     Packet clientbound(Packet packet) {
         if (packet instanceof ClientboundLoginPacket login) {
             if (chunkReplayCache != null) chunkReplayCache.clear();
+            if (entityReplayCache != null) entityReplayCache.clear();
             origin.login();
             currentSpawnInfo = login.getCommonPlayerSpawnInfo();
             currentWorld = currentSpawnInfo.getWorldName();
@@ -142,6 +153,7 @@ final class JavaPacketTransform {
         }
         if (packet instanceof ClientboundRespawnPacket respawn) {
             if (chunkReplayCache != null) chunkReplayCache.clear();
+            if (entityReplayCache != null) entityReplayCache.clear();
             currentSpawnInfo = respawn.getCommonPlayerSpawnInfo();
             currentWorld = currentSpawnInfo.getWorldName();
             lastDeathPosition = respawn.getCommonPlayerSpawnInfo().getLastDeathPos();
@@ -201,9 +213,53 @@ final class JavaPacketTransform {
                     p.getZ() - origin.offsetZ()));
         }
         if (packet instanceof ClientboundAddEntityPacket entity) {
+            cacheEntity(entity.getEntityId(), EntityReplayCache.Kind.SPAWN, 0, entity);
+            if (entityReplayCache != null && !replayingCachedPackets) {
+                entityReplayCache.updatePosition(entity.getEntityId(), entity.getX(), entity.getZ());
+            }
             return entity.withX(entity.getX() - origin.offsetX()).withZ(entity.getZ() - origin.offsetZ());
         }
+        if (packet instanceof ClientboundRemoveEntitiesPacket removed) {
+            if (entityReplayCache != null && !replayingCachedPackets) {
+                entityReplayCache.removeEntities(removed.getEntityIds());
+            }
+            return packet;
+        }
+        if (packet instanceof ClientboundUpdateAttributesPacket attributes) {
+            cacheEntity(attributes.getEntityId(), EntityReplayCache.Kind.ATTRIBUTES, 0, attributes);
+            return packet;
+        }
+        if (packet instanceof ClientboundUpdateMobEffectPacket effect) {
+            cacheEntity(effect.getEntityId(), EntityReplayCache.Kind.EFFECT, effect.getEffect().ordinal(), effect);
+            return packet;
+        }
+        if (packet instanceof ClientboundRemoveMobEffectPacket effect) {
+            if (entityReplayCache != null && !replayingCachedPackets) {
+                entityReplayCache.removeEffect(effect.getEntityId(), effect.getEffect().ordinal());
+            }
+            return packet;
+        }
+        if (packet instanceof ClientboundSetEntityLinkPacket link) {
+            cacheEntity(link.getEntityId(), EntityReplayCache.Kind.LINK, link.getAttachedToId(), link);
+            return packet;
+        }
+        if (packet instanceof ClientboundSetPassengersPacket passengers) {
+            cacheEntity(passengers.getEntityId(), EntityReplayCache.Kind.PASSENGERS, 0, passengers);
+            return packet;
+        }
+        if (packet instanceof ClientboundSetEntityMotionPacket motion) {
+            cacheEntity(motion.getEntityId(), EntityReplayCache.Kind.MOTION, 0, motion);
+            return packet;
+        }
         if (packet instanceof ClientboundEntityPositionSyncPacket sync) {
+            if (entityReplayCache != null && !replayingCachedPackets) {
+                Vector3d absolute = sync.isStepped()
+                        ? sync.getSteps().get(sync.getSteps().size() - 1).position() : sync.getEndPosition();
+                if (absolute != null) {
+                    entityReplayCache.updatePosition(sync.getId(), absolute.getX(), absolute.getZ());
+                    cacheEntity(sync.getId(), EntityReplayCache.Kind.POSITION, 0, sync);
+                }
+            }
             if (sync.isStepped()) {
                 List<ClientboundEntityPositionSyncPacket.PositionStep> shifted = new ArrayList<>();
                 for (ClientboundEntityPositionSyncPacket.PositionStep step : sync.getSteps()) {
@@ -363,7 +419,17 @@ final class JavaPacketTransform {
             return inventory.withContents(shiftItemStack(inventory.getContents()));
         }
         if (packet instanceof ClientboundSetEntityDataPacket metadata) {
+            cacheEntity(metadata.getEntityId(), EntityReplayCache.Kind.METADATA, 0, metadata);
             return metadata.withMetadata(shiftMetadata(metadata.getMetadata()));
+        }
+        if (packet instanceof ClientboundSetEquipmentPacket equipment) {
+            cacheEntity(equipment.getEntityId(), EntityReplayCache.Kind.EQUIPMENT, 0, equipment);
+            Equipment[] entries = equipment.getEquipment().clone();
+            for (int i = 0; i < entries.length; i++) {
+                Equipment entry = entries[i];
+                entries[i] = new Equipment(entry.getSlot(), shiftItemStack(entry.getItem()));
+            }
+            return equipment.withEquipment(entries);
         }
         if (packet instanceof ClientboundBlockEntityDataPacket blockEntity) {
             cacheBlockEntity(blockEntity);
@@ -512,6 +578,35 @@ final class JavaPacketTransform {
         return List.of(
                 new ClientboundRespawnPacket(temporarySpawn, true, true),
                 new ClientboundRespawnPacket(localSpawn, true, true));
+    }
+
+    int cachedEntityCount() {
+        return entityReplayCache == null ? 0 : entityReplayCache.size();
+    }
+
+    List<Packet> replayCachedEntities(double centerX, double centerZ, double radiusBlocks, int limit) {
+        if (entityReplayCache == null || limit <= 0) return List.of();
+        List<Packet> replay = new ArrayList<>();
+        replayingCachedPackets = true;
+        try {
+            for (EntityReplayCache.ReplayPacket cached : entityReplayCache.snapshotNearestFirst(
+                    centerX, centerZ, radiusBlocks, limit)) {
+                MinecraftPacket packet = JavaPacketSnapshot.deserialize(cached.packetType(), cached.payload());
+                replay.add(clientbound(packet));
+            }
+        } finally {
+            replayingCachedPackets = false;
+        }
+        return List.copyOf(replay);
+    }
+
+    private void cacheEntity(int entityId, EntityReplayCache.Kind kind, int subKey, MinecraftPacket packet) {
+        if (entityReplayCache == null || replayingCachedPackets) return;
+        try {
+            entityReplayCache.put(entityId, kind, subKey, packet.getClass(), JavaPacketSnapshot.serialize(packet));
+        } catch (RuntimeException exception) {
+            // Cache failures must not interrupt the live packet stream.
+        }
     }
 
     int cachedChunkCount() {
