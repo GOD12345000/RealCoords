@@ -7,6 +7,7 @@ import io.netty.channel.ChannelPipeline;
 import io.netty.channel.ChannelPromise;
 import org.cloudburstmc.math.vector.Vector3f;
 import org.cloudburstmc.protocol.bedrock.BedrockPeer;
+import org.cloudburstmc.protocol.bedrock.data.GameRuleData;
 import org.cloudburstmc.protocol.bedrock.netty.BedrockBatchWrapper;
 import org.cloudburstmc.protocol.bedrock.netty.BedrockPacketWrapper;
 import org.cloudburstmc.protocol.bedrock.packet.*;
