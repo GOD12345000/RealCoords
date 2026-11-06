@@ -677,17 +677,7 @@ final class JavaPacketTransform {
 
     List<Packet> replayGlobalState() {
         if (globalStateReplayCache == null) return List.of();
-        List<Packet> replay = new ArrayList<>();
-        replayingCachedPackets = true;
-        try {
-            for (GlobalStateReplayCache.Snapshot snapshot : globalStateReplayCache.snapshot()) {
-                MinecraftPacket packet = JavaPacketSnapshot.deserialize(snapshot.packetType(), snapshot.payload());
-                replay.add(clientbound(packet));
-            }
-        } finally {
-            replayingCachedPackets = false;
-        }
-        return List.copyOf(replay);
+        return replayGlobalBatch(globalStateReplayCache.snapshot());
     }
 
     private void cacheGlobal(GlobalStateReplayCache.Key key, MinecraftPacket packet) {
@@ -701,18 +691,7 @@ final class JavaPacketTransform {
 
     List<Packet> replayCachedEntities(double centerX, double centerZ, double radiusBlocks, int limit) {
         if (entityReplayCache == null || limit <= 0) return List.of();
-        List<Packet> replay = new ArrayList<>();
-        replayingCachedPackets = true;
-        try {
-            for (EntityReplayCache.ReplayPacket cached : entityReplayCache.snapshotNearestFirst(
-                    centerX, centerZ, radiusBlocks, limit)) {
-                MinecraftPacket packet = JavaPacketSnapshot.deserialize(cached.packetType(), cached.payload());
-                replay.add(clientbound(packet));
-            }
-        } finally {
-            replayingCachedPackets = false;
-        }
-        return List.copyOf(replay);
+        return replayEntityBatch(entityReplayCache.snapshotNearestFirst(centerX, centerZ, radiusBlocks, limit));
     }
 
     private void cacheEntityPosition(int entityId) {
@@ -758,17 +737,36 @@ final class JavaPacketTransform {
         return replayCachedChunks(centerChunkX, centerChunkZ, 0, limit);
     }
 
-    List<Packet> replayCachedChunks(int centerChunkX, int centerChunkZ, int startIndex, int limit) {
-        if (chunkReplayCache == null || limit <= 0 || startIndex < 0) return List.of();
+    record ReplaySnapshot(List<ChunkReplayCache.ReplayChunk> chunks,
+                          List<EntityReplayCache.ReplayPacket> entities,
+                          List<GlobalStateReplayCache.Snapshot> globalState) {
+        ReplaySnapshot {
+            chunks = List.copyOf(chunks);
+            entities = List.copyOf(entities);
+            globalState = List.copyOf(globalState);
+        }
+    }
+
+    ReplaySnapshot prepareReplaySnapshot(int centerChunkX, int centerChunkZ,
+                                         double centerX, double centerZ, double entityRadius) {
+        List<ChunkReplayCache.ReplayChunk> chunks = chunkReplayCache == null ? List.of()
+                : chunkReplayCache.snapshotNearestFirst(centerChunkX, centerChunkZ, chunkReplayCache.size());
+        List<EntityReplayCache.ReplayPacket> entities = entityReplayCache == null ? List.of()
+                : entityReplayCache.snapshotNearestFirst(centerX, centerZ, entityRadius, 512);
+        List<GlobalStateReplayCache.Snapshot> global = globalStateReplayCache == null ? List.of()
+                : globalStateReplayCache.snapshot();
+        return new ReplaySnapshot(chunks, entities, global);
+    }
+
+    List<Packet> replayChunkBatch(List<ChunkReplayCache.ReplayChunk> chunks) {
+        if (chunks.isEmpty()) return List.of();
         List<Packet> replay = new ArrayList<>();
         replayingCachedPackets = true;
         try {
-            for (ChunkReplayCache.ReplayChunk chunk :
-                    chunkReplayCache.snapshotNearestFirst(centerChunkX, centerChunkZ, startIndex, limit)) {
+            for (ChunkReplayCache.ReplayChunk chunk : chunks) {
                 ClientboundLevelChunkWithLightPacket base = JavaPacketSnapshot.deserialize(
                         ClientboundLevelChunkWithLightPacket.class, chunk.payload());
                 replay.add(clientbound(base));
-
                 for (ChunkReplayCache.ReplayOverlay overlay : chunk.overlays()) {
                     MinecraftPacket update = switch (overlay.type()) {
                         case BLOCK_UPDATE -> JavaPacketSnapshot.deserialize(
@@ -787,6 +785,41 @@ final class JavaPacketTransform {
             replayingCachedPackets = false;
         }
         return List.copyOf(replay);
+    }
+
+    List<Packet> replayEntityBatch(List<EntityReplayCache.ReplayPacket> entities) {
+        if (entities.isEmpty()) return List.of();
+        List<Packet> replay = new ArrayList<>(entities.size());
+        replayingCachedPackets = true;
+        try {
+            for (EntityReplayCache.ReplayPacket cached : entities) {
+                MinecraftPacket packet = JavaPacketSnapshot.deserialize(cached.packetType(), cached.payload());
+                replay.add(clientbound(packet));
+            }
+        } finally {
+            replayingCachedPackets = false;
+        }
+        return List.copyOf(replay);
+    }
+
+    List<Packet> replayGlobalBatch(List<GlobalStateReplayCache.Snapshot> states) {
+        if (states.isEmpty()) return List.of();
+        List<Packet> replay = new ArrayList<>(states.size());
+        replayingCachedPackets = true;
+        try {
+            for (GlobalStateReplayCache.Snapshot snapshot : states) {
+                MinecraftPacket packet = JavaPacketSnapshot.deserialize(snapshot.packetType(), snapshot.payload());
+                replay.add(clientbound(packet));
+            }
+        } finally {
+            replayingCachedPackets = false;
+        }
+        return List.copyOf(replay);
+    }
+
+    List<Packet> replayCachedChunks(int centerChunkX, int centerChunkZ, int startIndex, int limit) {
+        if (chunkReplayCache == null || limit <= 0 || startIndex < 0) return List.of();
+        return replayChunkBatch(chunkReplayCache.snapshotNearestFirst(centerChunkX, centerChunkZ, startIndex, limit));
     }
 
     private void cacheChunk(ClientboundLevelChunkWithLightPacket chunk) {
