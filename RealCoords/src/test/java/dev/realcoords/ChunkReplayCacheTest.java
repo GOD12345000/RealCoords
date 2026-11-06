@@ -40,7 +40,7 @@ class ChunkReplayCacheTest {
         ChunkReplayCache cache = new ChunkReplayCache(2, 1024, false);
         cache.put(0, 0, new byte[]{0});
         cache.put(1, 0, new byte[]{1});
-        cache.snapshotNearestFirst(0, 0, 1); // touch (0,0)
+        assertNotNull(cache.get(0, 0)); // refresh (0,0) recency
         cache.put(2, 0, new byte[]{2});
 
         assertEquals(2, cache.size());
