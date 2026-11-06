@@ -24,14 +24,13 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * Non-mutating probe for the Java-side MCProtocolLib pipeline.
+ * Coordinate transformer for the Java-side MCProtocolLib pipeline.
  *
- * This deliberately does not transform packets. It verifies that the downstream
- * channel can be reached and that decoded inbound / outbound Packet instances
- * pass through a handler inserted immediately before MCProtocolLib's manager.
+ * The handler rewrites decoded clientbound packets and outgoing serverbound packets
+ * immediately before MCProtocolLib's manager.
  */
 final class JavaSessionHook {
-    private static final String HANDLER_NAME = "realcoords-java-probe";
+    private static final String HANDLER_NAME = "realcoords-java-transform";
     private static final long DISCOVERY_TIMEOUT_SECONDS = 30;
 
     private JavaSessionHook() {
@@ -86,7 +85,7 @@ final class JavaSessionHook {
                     @Override
                     public void connected(ConnectedEvent event) {
                         if (finished.compareAndSet(false, true)) {
-                            installOnChannel(session, log);
+                            installOnChannel(session, config, log);
                         }
                         session.removeListener(this);
                     }
@@ -111,7 +110,7 @@ final class JavaSessionHook {
         geyserSession.getTickEventLoop().schedule(() -> {
             if (finished.compareAndSet(false, true)) {
                 poller.cancel(false);
-                log.warning("[RealCoords] Java hook probe timed out before downstream channel became available");
+                log.warning("[RealCoords] Java hook timed out before downstream channel became available");
             }
         }, DISCOVERY_TIMEOUT_SECONDS, TimeUnit.SECONDS);
     }
@@ -139,9 +138,9 @@ final class JavaSessionHook {
                 return;
             }
 
-            JavaPacketTransformHandler probe = new JavaPacketTransformHandler(new JavaPacketTransform(config), log);
-            pipeline.addBefore(NetworkConstants.MANAGER_NAME, HANDLER_NAME, probe);
-            log.info("[RealCoords] Java hook probe installed; pipeline=" + pipeline.names());
+            JavaPacketTransformHandler handler = new JavaPacketTransformHandler(new JavaPacketTransform(config), log);
+            pipeline.addBefore(NetworkConstants.MANAGER_NAME, HANDLER_NAME, handler);
+            log.info("[RealCoords] Java coordinate transform installed; pipeline=" + pipeline.names());
         };
 
         // ConnectedEvent is fired from channelActive. Install inline when already on
@@ -159,7 +158,10 @@ final class JavaSessionHook {
         private final AtomicBoolean firstClientbound = new AtomicBoolean();
         private final AtomicBoolean firstServerbound = new AtomicBoolean();
 
-        private JavaPacketProbe(ExtensionLogger log) {
+        private final JavaPacketTransform transform;
+
+        private JavaPacketTransformHandler(JavaPacketTransform transform, ExtensionLogger log) {
+            this.transform = transform;
             this.log = log;
         }
 
