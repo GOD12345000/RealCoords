@@ -216,7 +216,7 @@ final class JavaPacketTransform {
             Vector3i p = blockEntity.getPosition();
             return blockEntity.withPosition(Vector3i.from(p.getX() - origin.offsetX(), p.getY(),
                     p.getZ() - origin.offsetZ()))
-                    .withNbt(NbtShift.shift(blockEntity.getNbt(), -origin.offsetX(), -origin.offsetZ(), config));
+                    .withNbt(NbtShift.shift(blockEntity.getNbt(), origin.offsetX(), origin.offsetZ(), config));
         }
         if (packet instanceof ClientboundBlockEventPacket event) {
             Vector3i p = event.getPosition();
