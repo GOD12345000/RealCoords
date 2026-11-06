@@ -36,7 +36,7 @@ final class JavaSessionHook {
     private JavaSessionHook() {
     }
 
-    static void install(GeyserSession geyserSession, ShiftConfig config, ExtensionLogger log) {
+    static void install(GeyserSession geyserSession, ShiftConfig config, JavaOriginState origin, ExtensionLogger log) {
         AtomicBoolean finished = new AtomicBoolean();
         AtomicBoolean listenerRegistered = new AtomicBoolean();
         AtomicReference<ScheduledFuture<?>> pollerReference = new AtomicReference<>();
@@ -56,7 +56,7 @@ final class JavaSessionHook {
             Session session = downstream.getSession();
             if (session.isConnected()) {
                 if (finished.compareAndSet(false, true)) {
-                    installOnChannel(session, config, log);
+                    installOnChannel(session, config, origin, log);
                 }
                 ScheduledFuture<?> scheduled = pollerReference.get();
                 if (scheduled != null) scheduled.cancel(false);
@@ -115,7 +115,7 @@ final class JavaSessionHook {
         }, DISCOVERY_TIMEOUT_SECONDS, TimeUnit.SECONDS);
     }
 
-    private static void installOnChannel(Session session, ShiftConfig config, ExtensionLogger log) {
+    private static void installOnChannel(Session session, ShiftConfig config, JavaOriginState origin, ExtensionLogger log) {
         Channel channel;
         try {
             channel = session.getChannel();
@@ -138,7 +138,7 @@ final class JavaSessionHook {
                 return;
             }
 
-            JavaPacketTransformHandler handler = new JavaPacketTransformHandler(new JavaPacketTransform(config), log);
+            JavaPacketTransformHandler handler = new JavaPacketTransformHandler(new JavaPacketTransform(origin), log);
             pipeline.addBefore(NetworkConstants.MANAGER_NAME, HANDLER_NAME, handler);
             log.info("[RealCoords] Java coordinate transform installed; pipeline=" + pipeline.names());
         };
