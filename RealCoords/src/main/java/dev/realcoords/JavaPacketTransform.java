@@ -41,6 +41,9 @@ import org.geysermc.mcprotocollib.protocol.data.game.chunk.ChunkBiomeData;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundUseItemOnPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundPlayerActionPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.inventory.ServerboundPickItemFromBlockPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.inventory.ServerboundSetCommandBlockPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.inventory.ServerboundSetStructureBlockPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.inventory.ServerboundSetJigsawBlockPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.level.ServerboundSignUpdatePacket;
 
 import java.util.ArrayList;
@@ -241,6 +244,21 @@ final class JavaPacketTransform {
         if (packet instanceof ServerboundPickItemFromBlockPacket pick) {
             Vector3i p = pick.getPos();
             return pick.withPos(Vector3i.from(p.getX() + origin.offsetX(), p.getY(),
+                    p.getZ() + origin.offsetZ()));
+        }
+        if (packet instanceof ServerboundSetCommandBlockPacket command) {
+            Vector3i p = command.getPosition();
+            return command.withPosition(Vector3i.from(p.getX() + origin.offsetX(), p.getY(),
+                    p.getZ() + origin.offsetZ()));
+        }
+        if (packet instanceof ServerboundSetStructureBlockPacket structure) {
+            Vector3i p = structure.getPosition();
+            return structure.withPosition(Vector3i.from(p.getX() + origin.offsetX(), p.getY(),
+                    p.getZ() + origin.offsetZ()));
+        }
+        if (packet instanceof ServerboundSetJigsawBlockPacket jigsaw) {
+            Vector3i p = jigsaw.getPosition();
+            return jigsaw.withPosition(Vector3i.from(p.getX() + origin.offsetX(), p.getY(),
                     p.getZ() + origin.offsetZ()));
         }
         if (packet instanceof ServerboundSignUpdatePacket sign) {
