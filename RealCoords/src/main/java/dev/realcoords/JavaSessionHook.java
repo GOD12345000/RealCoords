@@ -163,6 +163,7 @@ final class JavaSessionHook {
         private ScheduledFuture<?> replayTimeout;
         private ReoriginReplayPlan activeReplayPlan;
         private boolean syntheticResetPendingReplay;
+        private long bedrockSpawnWaitDeadlineMs;
         private int nextSyntheticTeleportId = Integer.MIN_VALUE;
 
         JavaPacketTransformHandler(JavaPacketTransform transform, ExtensionLogger log) {
@@ -317,6 +318,7 @@ final class JavaSessionHook {
             if (plan == activeReplayPlan) activeReplayPlan = null;
             cancelReplayTasks();
             syntheticResetPendingReplay = false;
+            bedrockSpawnWaitDeadlineMs = 0;
             ctx.close();
         }
 
@@ -429,6 +431,20 @@ final class JavaSessionHook {
                 ctx.executor().execute(() -> startAutomaticReplay(ctx));
                 return;
             }
+            if (geyserSession != null && !geyserSession.isSpawned()) {
+                long now = System.currentTimeMillis();
+                if (bedrockSpawnWaitDeadlineMs == 0) {
+                    bedrockSpawnWaitDeadlineMs = now + transform.syntheticAckTimeoutMillis() * 2L;
+                }
+                if (now >= bedrockSpawnWaitDeadlineMs) {
+                    if (log != null) log.warning("[RealCoords] Geyser did not finish the Bedrock dimension transition; closing downstream session");
+                    ctx.close();
+                    return;
+                }
+                replayBatchTask = ctx.executor().schedule(() -> startAutomaticReplay(ctx), 50, TimeUnit.MILLISECONDS);
+                return;
+            }
+            bedrockSpawnWaitDeadlineMs = 0;
             try {
                 double realX = transform.realX();
                 double realZ = transform.realZ();
@@ -487,6 +503,7 @@ final class JavaSessionHook {
             if (plan != activeReplayPlan || !plan.complete()) return;
             activeReplayPlan = null;
             syntheticResetPendingReplay = false;
+            bedrockSpawnWaitDeadlineMs = 0;
             cancelReplayTasks();
             if (log != null) log.info("[RealCoords] live re-origin replay completed; movement unfrozen");
         }
