@@ -90,6 +90,7 @@ final class JavaPacketTransform {
     private final double maxServerboundJump;
     private final ShiftConfig config;
     private final ChunkReplayCache chunkReplayCache;
+    private boolean replayingCachedPackets;
     private Key currentWorld;
     private JavaOriginState.Snapshot pendingOriginChange;
     private GlobalPos lastDeathPosition;
@@ -465,9 +466,45 @@ final class JavaPacketTransform {
     }
 
     private boolean cacheActive() {
-        // Capture before the first re-origin threshold is crossed; the bounded LRU
-        // retains the most recently streamed world area for a later replay.
-        return chunkReplayCache != null;
+        // Replay packets are already snapshots; never feed them back into the cache.
+        return chunkReplayCache != null && !replayingCachedPackets;
+    }
+
+    /**
+     * Rebuilds a bounded batch of cached chunks in the current local coordinate
+     * system. Each base chunk is followed by its captured block/light/biome overlays.
+     * The caller must inject the returned packets into Geyser's inbound pipeline on
+     * the downstream channel event loop.
+     */
+    List<Packet> replayCachedChunks(int centerChunkX, int centerChunkZ, int limit) {
+        if (chunkReplayCache == null || limit <= 0) return List.of();
+        List<Packet> replay = new ArrayList<>();
+        replayingCachedPackets = true;
+        try {
+            for (ChunkReplayCache.ReplayChunk chunk :
+                    chunkReplayCache.snapshotNearestFirst(centerChunkX, centerChunkZ, limit)) {
+                ClientboundLevelChunkWithLightPacket base = JavaPacketSnapshot.deserialize(
+                        ClientboundLevelChunkWithLightPacket.class, chunk.payload());
+                replay.add(clientbound(base));
+
+                for (ChunkReplayCache.ReplayOverlay overlay : chunk.overlays()) {
+                    MinecraftPacket update = switch (overlay.type()) {
+                        case BLOCK_UPDATE -> JavaPacketSnapshot.deserialize(
+                                ClientboundBlockUpdatePacket.class, overlay.payload());
+                        case BLOCK_ENTITY -> JavaPacketSnapshot.deserialize(
+                                ClientboundBlockEntityDataPacket.class, overlay.payload());
+                        case LIGHT_UPDATE -> JavaPacketSnapshot.deserialize(
+                                ClientboundLightUpdatePacket.class, overlay.payload());
+                        case CHUNK_BIOMES -> JavaPacketSnapshot.deserialize(
+                                ClientboundChunksBiomesPacket.class, overlay.payload());
+                    };
+                    replay.add(clientbound(update));
+                }
+            }
+        } finally {
+            replayingCachedPackets = false;
+        }
+        return List.copyOf(replay);
     }
 
     private void cacheChunk(ClientboundLevelChunkWithLightPacket chunk) {
