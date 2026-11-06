@@ -107,6 +107,7 @@ final class JavaPacketTransform {
     private final ChunkReplayCache chunkReplayCache;
     private final EntityReplayCache entityReplayCache;
     private final GlobalStateReplayCache globalStateReplayCache;
+    private final long liveUpdateBudgetBytes;
     private boolean replayingCachedPackets;
     private Key currentWorld;
     private PlayerSpawnInfo currentSpawnInfo;
@@ -141,12 +142,17 @@ final class JavaPacketTransform {
         this.origin = origin;
         this.maxServerboundJump = maxServerboundJump;
         this.config = config;
+        long totalBudget = config == null ? 32L * 1024 * 1024 : Math.max(1L << 20, config.cacheMaxBytes);
+        long chunkBudget = totalBudget * 3 / 4;
+        long entityBudget = totalBudget / 8;
+        long globalBudget = totalBudget / 32;
+        this.liveUpdateBudgetBytes = totalBudget * 3 / 32;
         this.chunkReplayCache = config != null && config.cacheEnabled
-                ? new ChunkReplayCache(config.cacheMaxChunks, config.cacheMaxBytes, config.cacheCompress) : null;
+                ? new ChunkReplayCache(config.cacheMaxChunks, chunkBudget, config.cacheCompress) : null;
         this.entityReplayCache = config != null && config.cacheEnabled
-                ? new EntityReplayCache(512, Math.max(1L << 20, config.cacheMaxBytes / 4)) : null;
+                ? new EntityReplayCache(512, entityBudget) : null;
         this.globalStateReplayCache = config != null && config.cacheEnabled
-                ? new GlobalStateReplayCache(Math.max(256L << 10, config.cacheMaxBytes / 16)) : null;
+                ? new GlobalStateReplayCache(globalBudget) : null;
     }
 
     Packet clientbound(Packet packet) {
@@ -681,6 +687,10 @@ final class JavaPacketTransform {
 
     double realX() { return origin.realX(); }
     double realZ() { return origin.realZ(); }
+
+    long liveUpdateBudgetBytes() {
+        return liveUpdateBudgetBytes;
+    }
 
     int replayBatchSize() {
         return config == null ? 24 : Math.max(1, config.resendPerTick);
