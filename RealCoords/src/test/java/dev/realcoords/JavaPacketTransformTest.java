@@ -92,6 +92,36 @@ class JavaPacketTransformTest {
     }
 
     @Test
+    void movementObservedDuringReplayUpdatesBaselineWithoutShiftingAgain() {
+        ShiftConfig config = new ShiftConfig();
+        config.dims.put(0, new ShiftConfig.Dim());
+        config.shiftWhileMoving = true;
+        config.cooldownMs = 0;
+        JavaPacketTransform transform = new JavaPacketTransform(config);
+        Key world = Key.key("minecraft:overworld");
+        PlayerSpawnInfo spawnInfo = new PlayerSpawnInfo(1, world, 0L, GameMode.SURVIVAL,
+                null, false, false, null, 0, 63);
+        transform.clientbound(new ClientboundLoginPacket(1, false, new Key[]{world},
+                20, 10, 10, false, true, false, spawnInfo, true, true));
+        transform.clientbound(new ClientboundPlayerPositionPacket(
+                1, 23_000_000, 70, -17_000_000, 0, 0, 0, 0, 0));
+        transform.takeOriginChange();
+        int oldOffsetX = transform.offsetX();
+        int oldOffsetZ = transform.offsetZ();
+
+        for (int step = 1; step <= 1000; step++) {
+            double realX = 23_000_000 + step * 60.0;
+            assertTrue(transform.observeMovementDuringReplay(new ServerboundMovePlayerPosPacket(
+                    true, false, realX - oldOffsetX, 70, -17_000_000 - oldOffsetZ)));
+        }
+
+        assertEquals(23_060_000, transform.realX());
+        assertEquals(oldOffsetX, transform.offsetX());
+        assertEquals(oldOffsetZ, transform.offsetZ());
+        assertNull(transform.takeOriginChange());
+    }
+
+    @Test
     void optInLiveMovementShiftDropsTriggeringPacketAndPublishesNewOrigin() {
         ShiftConfig config = new ShiftConfig();
         config.dims.put(0, new ShiftConfig.Dim());
