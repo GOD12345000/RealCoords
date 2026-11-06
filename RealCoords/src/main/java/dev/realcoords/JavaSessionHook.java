@@ -9,6 +9,7 @@ import io.netty.util.concurrent.ScheduledFuture;
 import org.geysermc.geyser.api.extension.ExtensionLogger;
 import org.geysermc.geyser.session.DownstreamSession;
 import org.geysermc.geyser.session.GeyserSession;
+import org.geysermc.geyser.entity.type.player.SessionPlayerEntity;
 import org.geysermc.mcprotocollib.network.NetworkConstants;
 import org.geysermc.mcprotocollib.network.Session;
 import org.geysermc.mcprotocollib.network.event.session.ConnectedEvent;
@@ -77,7 +78,7 @@ final class JavaSessionHook {
                     @Override
                     public void connected(ConnectedEvent event) {
                         if (finished.compareAndSet(false, true)) {
-                            installOnChannel(session, config, origin, log);
+                            installOnChannel(session, geyserSession, config, origin, log);
                         }
                         session.removeListener(this);
                     }
@@ -108,7 +109,7 @@ final class JavaSessionHook {
         }, DISCOVERY_TIMEOUT_SECONDS, TimeUnit.SECONDS);
     }
 
-    private static void installOnChannel(Session session, ShiftConfig config, JavaOriginState origin, ExtensionLogger log) {
+    private static void installOnChannel(Session session, GeyserSession geyserSession, ShiftConfig config, JavaOriginState origin, ExtensionLogger log) {
         Channel channel;
         try {
             channel = session.getChannel();
@@ -131,7 +132,7 @@ final class JavaSessionHook {
                 return;
             }
 
-            JavaPacketTransformHandler handler = new JavaPacketTransformHandler(new JavaPacketTransform(origin, config.maxJump, config), log);
+            JavaPacketTransformHandler handler = new JavaPacketTransformHandler(new JavaPacketTransform(origin, config.maxJump, config), geyserSession, log);
             pipeline.addBefore(NetworkConstants.MANAGER_NAME, HANDLER_NAME, handler);
             log.info("[RealCoords] Java coordinate transform installed; pipeline=" + pipeline.names());
         };
@@ -153,9 +154,15 @@ final class JavaSessionHook {
         private long lastGuardWarningMs;
 
         private final JavaPacketTransform transform;
+        private final GeyserSession geyserSession;
 
         JavaPacketTransformHandler(JavaPacketTransform transform, ExtensionLogger log) {
+            this(transform, null, log);
+        }
+
+        JavaPacketTransformHandler(JavaPacketTransform transform, GeyserSession geyserSession, ExtensionLogger log) {
             this.transform = transform;
+            this.geyserSession = geyserSession;
             this.log = log;
         }
 
@@ -172,6 +179,18 @@ final class JavaSessionHook {
                             + ", offsetZ=" + change.offsetZ());
                 }
                 super.channelRead(ctx, transformed);
+                JavaPacketTransform.DeathPositionUpdate deathUpdate = transform.takeDeathPositionUpdate();
+                if (deathUpdate != null && geyserSession != null) {
+                    geyserSession.getTickEventLoop().execute(() -> {
+                        try {
+                            SessionPlayerEntity player = geyserSession.getPlayerEntity();
+                            player.setLastDeathPosition(deathUpdate.position());
+                            player.updateBedrockMetadata();
+                        } catch (Throwable throwable) {
+                            if (log != null) log.error("[RealCoords] failed to refresh shifted death position", throwable);
+                        }
+                    });
+                }
                 return;
             }
             super.channelRead(ctx, message);
