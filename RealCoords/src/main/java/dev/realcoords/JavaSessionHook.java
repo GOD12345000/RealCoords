@@ -242,6 +242,20 @@ final class JavaSessionHook {
             return packets.size();
         }
 
+        int replayCachedEntities(ChannelHandlerContext ctx, double centerX, double centerZ,
+                                 double radiusBlocks, int limit) {
+            if (!ctx.executor().inEventLoop()) {
+                throw new IllegalStateException("Cached entity replay must run on the downstream channel event loop");
+            }
+            var packets = transform.replayCachedEntities(centerX, centerZ, radiusBlocks, limit);
+            for (Packet packet : packets) ctx.fireChannelRead(packet);
+            return packets.size();
+        }
+
+        int cachedEntityCount() {
+            return transform.cachedEntityCount();
+        }
+
         @Override
         public void channelRead(ChannelHandlerContext ctx, Object message) throws Exception {
             if (message instanceof Packet packet && firstClientbound.compareAndSet(false, true)) {
