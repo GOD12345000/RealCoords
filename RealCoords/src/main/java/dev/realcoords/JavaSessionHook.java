@@ -113,7 +113,7 @@ final class JavaSessionHook {
         try {
             channel = session.getChannel();
         } catch (RuntimeException exception) {
-            log.error("[RealCoords] Java hook probe could not access downstream channel", exception);
+            log.error("[RealCoords] Java hook could not access downstream channel", exception);
             return;
         }
 
@@ -123,11 +123,11 @@ final class JavaSessionHook {
                 return;
             }
             if (!channel.isActive()) {
-                log.error("[RealCoords] Java hook probe: downstream channel is not active; refusing late installation");
+                log.error("[RealCoords] Java hook: downstream channel is not active; refusing late installation");
                 return;
             }
             if (pipeline.get(NetworkConstants.MANAGER_NAME) == null) {
-                log.error("[RealCoords] Java hook probe: MCProtocolLib manager handler not found; pipeline=" + pipeline.names());
+                log.error("[RealCoords] Java hook: MCProtocolLib manager handler not found; pipeline=" + pipeline.names());
                 return;
             }
 
