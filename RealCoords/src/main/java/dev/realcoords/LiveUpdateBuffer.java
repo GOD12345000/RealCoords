@@ -50,8 +50,15 @@ final class LiveUpdateBuffer {
     }
 
     synchronized List<BufferedPacket> drain() {
-        List<BufferedPacket> result = List.copyOf(packets);
-        clear();
+        return drain(packets.size());
+    }
+
+    synchronized List<BufferedPacket> drain(int limit) {
+        if (limit < 1) throw new IllegalArgumentException("limit must be positive");
+        int count = Math.min(limit, packets.size());
+        List<BufferedPacket> result = List.copyOf(packets.subList(0, count));
+        for (BufferedPacket packet : result) storedBytes -= packet.memorySize();
+        packets.subList(0, count).clear();
         return result;
     }
 
