@@ -3,6 +3,8 @@
 
 origin-shift:
   enabled: true
+  # java：在 Geyser 轉成 float 前轉換；bedrock：舊版相容模式
+  layer: java
   # 偏移量的對齊單位，必須是 16 的倍數（會自動修正）
   alignment: 256
   # 基岩版客戶端看到的座標超過此值，就把原點移到玩家附近
