@@ -170,23 +170,17 @@ final class EntityReplayCache {
             return distance != 0 ? distance : Integer.compare(a.getKey(), b.getKey());
         });
 
+        List<Map.Entry<Integer, EntityState>> selected =
+                ordered.subList(0, Math.min(limit, ordered.size()));
         List<ReplayPacket> result = new ArrayList<>();
-        for (Map.Entry<Integer, EntityState> entry : ordered) {
-            if (result.size() >= limit) break;
-            int entityId = entry.getKey();
-            EntityState state = entry.getValue();
-            // Spawn every entity before replaying links/passengers or mutable state.
-            for (Kind kind : Kind.values()) {
-                if (kind != Kind.SPAWN) continue;
-                appendPackets(result, entityId, state, kind);
-            }
+        // Spawn every selected entity before replaying dependent state.
+        for (Map.Entry<Integer, EntityState> entry : selected) {
+            appendPackets(result, entry.getKey(), entry.getValue(), Kind.SPAWN);
         }
-        for (Map.Entry<Integer, EntityState> entry : ordered) {
-            if (result.size() >= limit * 16) break;
+        for (Map.Entry<Integer, EntityState> entry : selected) {
             for (Kind kind : Kind.values()) {
                 if (kind == Kind.SPAWN) continue;
                 appendPackets(result, entry.getKey(), entry.getValue(), kind);
-                if (result.size() >= limit * 16) break;
             }
         }
         return List.copyOf(result);
