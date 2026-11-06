@@ -11,11 +11,11 @@ origin-shift:
   trigger-distance: 50000
   # 真實座標回到此範圍內（且目前有偏移）才歸零。必須小於 trigger-distance（遲滯）
   reset-distance: 20000
-  # 兩次換原點的最短間隔（20 tick = 1 秒）
+  # bedrock 模式兩次換原點的最短間隔（Java 階段 1 只在世界重載時換原點）
   cooldown-ticks: 100
-  # 換原點／伺服器傳送後，等待客戶端到位的最長時間
+  # bedrock 模式換原點／伺服器傳送後，等待客戶端到位的最長時間
   ack-timeout-ticks: 60
-  # 客戶端位置與預期位置相差在此範圍內視為「已到位」（格）
+  # bedrock 模式下，客戶端位置與預期位置相差在此範圍內視為「已到位」（格）
   ack-tolerance: 4.0
   # 每個維度可單獨覆寫 enabled / trigger-distance / reset-distance / alignment
   dimensions:
@@ -27,13 +27,13 @@ safety:
   # 防呆閘：客戶端單次回報的位置與上一個已知真實座標相差超過此值，
   # 且不在等待傳送到位的狀態，就丟棄該座標（避免被傳送到 0,0 附近）
   max-serverbound-jump: 64.0
-  # 觸發防呆閘後，補送校正封包的最短間隔
+  # bedrock 模式觸發防呆閘後補送校正封包的最短間隔；Java 模式會丟棄異常移動並限制警告頻率
   correction-interval-ticks: 10
   # 輸出較詳細的除錯訊息（首次攔截、換原點細節、管線結構）
   debug-log: false
 
 chunk-cache:
-  # 換原點時要重送區塊，所以需要在記憶體保存已送出的區塊（原始真實座標版）
+  # bedrock 模式換原點時要重送區塊，因此需保存已送出的區塊（原始真實座標版）；Java 階段 1 不使用此快取
   enabled: true
   # 以 deflate 壓縮保存，省記憶體、略增 CPU
   compress: true
