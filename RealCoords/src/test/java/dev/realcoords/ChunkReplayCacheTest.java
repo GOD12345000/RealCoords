@@ -38,6 +38,17 @@ class ChunkReplayCacheTest {
     }
 
     @Test
+    void radiusSnapshotExcludesStaleChunksFromPreviousAreas() {
+        ChunkReplayCache cache = new ChunkReplayCache(16, 4096, false);
+        cache.put(0, 0, new byte[]{0});
+        cache.put(2, 1, new byte[]{1});
+        cache.put(20, 20, new byte[]{2});
+
+        List<ChunkReplayCache.ReplayChunk> nearby = cache.snapshotWithinRadius(0, 0, 3, 16);
+        assertEquals(List.of(0, 2), nearby.stream().map(ChunkReplayCache.ReplayChunk::x).toList());
+    }
+
+    @Test
     void payloadsAreDefensivelyCopied() {
         ChunkReplayCache cache = new ChunkReplayCache(8, 32_768, true);
         byte[] input = {1, 2, 3};
