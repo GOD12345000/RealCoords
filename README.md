@@ -160,7 +160,6 @@ plugins/Geyser-Velocity/extensions/realcoords/config.yml
 | ack-timeout-ticks | 60 | 舊 Bedrock 模式等待客戶端位置確認的逾時時間 |
 | ack-tolerance | 4.0 | 舊 Bedrock 模式確認位置時容許的誤差 |
 | dimensions.*.enabled | true | 個別維度是否啟用 |
-| 地獄覆寫 | 6000 / 2500 / 128 | 依序為觸發距離、重設距離、對齊間隔 |
 
 Minecraft 正常 tick rate 約為每秒 20 ticks；例如 100 ticks 約為 5 秒。觸發與重設距離形成遲滯區間，避免玩家在同一門檻附近反覆切換。登入、重生、維度切換及遠距傳送本來就會使 Geyser 重載世界，因此可使用較小的 `recenter-on-reload` 免費重新置中；連續移動則使用較大的 `trigger-distance`，避免頻繁重載。真實座標仍在 `reset-distance` 範圍內時會保留原本不偏移的行為。Java 模式階段 1 不使用 `cooldown-ticks`、`ack-timeout-ticks` 與 `ack-tolerance`；這三項保留給舊 Bedrock 模式。
 
