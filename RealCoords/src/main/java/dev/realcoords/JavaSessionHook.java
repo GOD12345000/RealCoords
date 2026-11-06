@@ -226,6 +226,43 @@ final class JavaSessionHook {
             }
         }
 
+        ReoriginReplayPlan prepareReplayPlan(int centerChunkX, int centerChunkZ,
+                                                  double centerX, double centerZ, double entityRadius) {
+            if (channelContext == null || !channelContext.executor().inEventLoop()) {
+                throw new IllegalStateException("Replay snapshot must be prepared on the downstream channel event loop");
+            }
+            JavaPacketTransform.ReplaySnapshot snapshot = transform.prepareReplaySnapshot(
+                    centerChunkX, centerChunkZ, centerX, centerZ, entityRadius);
+            return new ReoriginReplayPlan(snapshot.chunks(), snapshot.entities(), snapshot.globalState());
+        }
+
+        int replayChunkBatch(ChannelHandlerContext ctx, ReoriginReplayPlan plan, int limit) {
+            if (!ctx.executor().inEventLoop()) {
+                throw new IllegalStateException("Chunk replay must run on the downstream channel event loop");
+            }
+            var packets = transform.replayChunkBatch(plan.nextChunkBatch(limit));
+            for (Packet packet : packets) ctx.fireChannelRead(packet);
+            return packets.size();
+        }
+
+        int replayEntityBatch(ChannelHandlerContext ctx, ReoriginReplayPlan plan, int limit) {
+            if (!ctx.executor().inEventLoop()) {
+                throw new IllegalStateException("Entity replay must run on the downstream channel event loop");
+            }
+            var packets = transform.replayEntityBatch(plan.nextEntityBatch(limit));
+            for (Packet packet : packets) ctx.fireChannelRead(packet);
+            return packets.size();
+        }
+
+        int replayGlobalState(ChannelHandlerContext ctx, ReoriginReplayPlan plan) {
+            if (!ctx.executor().inEventLoop()) {
+                throw new IllegalStateException("Global state replay must run on the downstream channel event loop");
+            }
+            var packets = transform.replayGlobalBatch(plan.finishGlobalState());
+            for (Packet packet : packets) ctx.fireChannelRead(packet);
+            return packets.size();
+        }
+
         int replayCachedChunks(ChannelHandlerContext ctx, int centerChunkX, int centerChunkZ, int limit) {
             return replayCachedChunks(ctx, centerChunkX, centerChunkZ, 0, limit);
         }
