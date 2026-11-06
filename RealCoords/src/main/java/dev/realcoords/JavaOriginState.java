@@ -13,8 +13,8 @@ final class JavaOriginState {
 
     private final ShiftConfig config;
     private int dimension;
-    private int offsetX;
-    private int offsetZ;
+    private volatile int offsetX;
+    private volatile int offsetZ;
     private double lastX;
     private double lastZ;
     private boolean hasPosition;
