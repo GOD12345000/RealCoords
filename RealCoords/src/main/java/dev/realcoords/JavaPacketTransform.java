@@ -667,6 +667,28 @@ final class JavaPacketTransform {
                 origin.realZ() - origin.offsetZ(), 0, 0, 0, lastPlayerYaw, lastPlayerPitch);
     }
 
+    double realX() { return origin.realX(); }
+    double realZ() { return origin.realZ(); }
+
+    int replayBatchSize() {
+        return config == null ? 24 : Math.max(1, config.resendPerTick);
+    }
+
+    int entityReplayBatchSize() {
+        return Math.max(32, replayBatchSize() * 8);
+    }
+
+    double entityReplayRadius() {
+        return Math.max(256.0, viewDistanceChunks * 16.0 + 128.0);
+    }
+
+    int replayTimeoutMillis(int chunks, int entities) {
+        int chunkBatches = (chunks + replayBatchSize() - 1) / replayBatchSize();
+        int entityBatches = (entities + entityReplayBatchSize() - 1) / entityReplayBatchSize();
+        long estimate = (long) (chunkBatches + entityBatches + 4) * 50L * 3L + 15_000L;
+        return (int) Math.min(120_000L, Math.max(30_000L, estimate));
+    }
+
     int syntheticAckTimeoutMillis() {
         return config == null ? 3000 : Math.max(250, config.ackTimeoutMs);
     }
