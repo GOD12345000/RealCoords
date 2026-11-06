@@ -65,12 +65,18 @@ class JavaSessionHookTest {
                 1, 23_000_000, 70, -17_000_000, 0, 0, 0, 0, 0));
         while (channel.readInbound() != null) { }
 
-        int injected = handler.injectSyntheticResetRespawns(channel.pipeline().context(handler), 777777);
-        assertEquals(2, injected);
+        int injected = handler.injectSyntheticReset(channel.pipeline().context(handler), 777777);
+        assertEquals(3, injected);
         ClientboundRespawnPacket temporary = channel.readInbound();
         ClientboundRespawnPacket restored = channel.readInbound();
+        ClientboundPlayerPositionPacket syntheticPosition = channel.readInbound();
         assertNotNull(temporary);
         assertNotNull(restored);
+        assertNotNull(syntheticPosition);
+        assertEquals(777777, syntheticPosition.getId());
+        assertTrue(syntheticPosition.getRelatives().isEmpty());
+        assertEquals(transform.offsetX() * -1 + 23_000_000,
+                syntheticPosition.getPosition().getX() + transform.offsetX());
         assertEquals("minecraft:overworld_realcoords_reset",
                 temporary.getCommonPlayerSpawnInfo().getWorldName().asString());
         assertEquals(world, restored.getCommonPlayerSpawnInfo().getWorldName());
