@@ -1,0 +1,161 @@
+package dev.realcoords;
+
+import org.cloudburstmc.math.vector.Vector3d;
+import org.cloudburstmc.math.vector.Vector3i;
+import org.geysermc.mcprotocollib.network.packet.Packet;
+import org.geysermc.mcprotocollib.protocol.data.game.entity.player.PositionElement;
+import org.geysermc.mcprotocollib.protocol.data.game.level.block.BlockChangeEntry;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.ClientboundLoginPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.ClientboundRespawnPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundAddEntityPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundEntityPositionSyncPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundTeleportEntityPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.player.ClientboundPlayerPositionPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundBlockUpdatePacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundForgetLevelChunkPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundLevelChunkWithLightPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundLevelEventPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundLightUpdatePacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundSectionBlocksUpdatePacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundSetChunkCacheCenterPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundMovePlayerPosPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundMovePlayerPosRotPacket;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Phase-one Java protocol coordinate conversion.
+ *
+ * Only packet classes explicitly handled here are rewritten. Unsupported absolute
+ * coordinate packets are intentionally not guessed; they are tracked by the
+ * JavaSessionHook probe and will be added in follow-up coverage.
+ */
+final class JavaPacketTransform {
+    private final JavaOriginState origin;
+    private int viewDistanceChunks = 10;
+
+    JavaPacketTransform(ShiftConfig config) {
+        this.origin = new JavaOriginState(config);
+    }
+
+    Packet clientbound(Packet packet) {
+        if (packet instanceof ClientboundLoginPacket login) {
+            origin.login();
+            origin.respawn(dimensionId(login.getCommonPlayerSpawnInfo().getWorldName().asString()));
+            viewDistanceChunks = login.getViewDistance();
+            return packet;
+        }
+        if (packet instanceof ClientboundRespawnPacket respawn) {
+            origin.respawn(dimensionId(respawn.getCommonPlayerSpawnInfo().getWorldName().asString()));
+            return packet;
+        }
+        if (packet instanceof ClientboundPlayerPositionPacket position) {
+            boolean relativeX = position.getRelatives().contains(PositionElement.X);
+            boolean relativeZ = position.getRelatives().contains(PositionElement.Z);
+            if (!relativeX && !relativeZ) {
+                origin.absolutePosition(position.getPosition().getX(), position.getPosition().getZ(), viewDistanceChunks);
+            }
+            Vector3d p = position.getPosition();
+            return position.withPosition(Vector3d.from(
+                    relativeX ? p.getX() : p.getX() - origin.offsetX(),
+                    p.getY(),
+                    relativeZ ? p.getZ() : p.getZ() - origin.offsetZ()));
+        }
+        if (packet instanceof ClientboundTeleportEntityPacket teleport) {
+            Vector3d p = teleport.getPosition();
+            boolean relativeX = teleport.getRelatives().contains(PositionElement.X);
+            boolean relativeZ = teleport.getRelatives().contains(PositionElement.Z);
+            return teleport.withPosition(Vector3d.from(
+                    relativeX ? p.getX() : p.getX() - origin.offsetX(),
+                    p.getY(),
+                    relativeZ ? p.getZ() : p.getZ() - origin.offsetZ()));
+        }
+        if (packet instanceof ClientboundAddEntityPacket entity) {
+            return entity.withX(entity.getX() - origin.offsetX()).withZ(entity.getZ() - origin.offsetZ());
+        }
+        if (packet instanceof ClientboundEntityPositionSyncPacket sync) {
+            if (sync.isStepped()) {
+                List<ClientboundEntityPositionSyncPacket.PositionStep> shifted = new ArrayList<>();
+                for (ClientboundEntityPositionSyncPacket.PositionStep step : sync.getSteps()) {
+                    Vector3d p = step.position();
+                    shifted.add(new ClientboundEntityPositionSyncPacket.PositionStep(
+                            Vector3d.from(p.getX() - origin.offsetX(), p.getY(), p.getZ() - origin.offsetZ()),
+                            step.tickOffset()));
+                }
+                return sync.withSteps(shifted);
+            }
+            Vector3d p = sync.getEndPosition();
+            return sync.withEndPosition(Vector3d.from(
+                    p.getX() - origin.offsetX(), p.getY(), p.getZ() - origin.offsetZ()));
+        }
+        if (packet instanceof ClientboundLevelChunkWithLightPacket chunk) {
+            return chunk.withX(chunk.getX() - origin.offsetX() / 16)
+                    .withZ(chunk.getZ() - origin.offsetZ() / 16);
+        }
+        if (packet instanceof ClientboundForgetLevelChunkPacket chunk) {
+            return chunk.withX(chunk.getX() - origin.offsetX() / 16)
+                    .withZ(chunk.getZ() - origin.offsetZ() / 16);
+        }
+        if (packet instanceof ClientboundSetChunkCacheCenterPacket center) {
+            return center.withChunkX(center.getChunkX() - origin.offsetX() / 16)
+                    .withChunkZ(center.getChunkZ() - origin.offsetZ() / 16);
+        }
+        if (packet instanceof ClientboundLightUpdatePacket light) {
+            return light.withX(light.getX() - origin.offsetX() / 16)
+                    .withZ(light.getZ() - origin.offsetZ() / 16);
+        }
+        if (packet instanceof ClientboundBlockUpdatePacket block) {
+            BlockChangeEntry entry = block.getEntry();
+            Vector3i p = entry.getPosition();
+            return block.withEntry(new BlockChangeEntry(
+                    Vector3i.from(p.getX() - origin.offsetX(), p.getY(), p.getZ() - origin.offsetZ()),
+                    entry.getBlock()));
+        }
+        if (packet instanceof ClientboundSectionBlocksUpdatePacket section) {
+            int chunkX = section.getChunkX() - origin.offsetX() / 16;
+            int chunkZ = section.getChunkZ() - origin.offsetZ() / 16;
+            BlockChangeEntry[] entries = section.getEntries().clone();
+            for (int i = 0; i < entries.length; i++) {
+                BlockChangeEntry entry = entries[i];
+                Vector3i p = entry.getPosition();
+                entries[i] = new BlockChangeEntry(
+                        Vector3i.from(p.getX() - origin.offsetX(), p.getY(), p.getZ() - origin.offsetZ()),
+                        entry.getBlock());
+            }
+            return section.withChunkX(chunkX).withChunkZ(chunkZ).withEntries(entries);
+        }
+        if (packet instanceof ClientboundLevelEventPacket event) {
+            Vector3i p = event.getPosition();
+            return event.withPosition(Vector3i.from(
+                    p.getX() - origin.offsetX(), p.getY(), p.getZ() - origin.offsetZ()));
+        }
+        return packet;
+    }
+
+    Packet serverbound(Packet packet) {
+        if (packet instanceof ServerboundMovePlayerPosPacket move) {
+            return move.withX(move.getX() + origin.offsetX()).withZ(move.getZ() + origin.offsetZ());
+        }
+        if (packet instanceof ServerboundMovePlayerPosRotPacket move) {
+            return move.withX(move.getX() + origin.offsetX()).withZ(move.getZ() + origin.offsetZ());
+        }
+        return packet;
+    }
+
+    int offsetX() {
+        return origin.offsetX();
+    }
+
+    int offsetZ() {
+        return origin.offsetZ();
+    }
+
+    private static int dimensionId(String worldName) {
+        return switch (worldName) {
+            case "minecraft:the_nether" -> 1;
+            case "minecraft:the_end" -> 2;
+            default -> 0;
+        };
+    }
+}
