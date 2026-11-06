@@ -156,6 +156,8 @@ final class JavaSessionHook {
         private final JavaPacketTransform transform;
         private final GeyserSession geyserSession;
         private final SyntheticResetGate syntheticResetGate = new SyntheticResetGate();
+        private ChannelHandlerContext channelContext;
+        private ScheduledFuture<?> syntheticResetTimeout;
 
         JavaPacketTransformHandler(JavaPacketTransform transform, ExtensionLogger log) {
             this(transform, null, log);
@@ -167,12 +169,41 @@ final class JavaSessionHook {
             this.log = log;
         }
 
+        @Override
+        public void handlerAdded(ChannelHandlerContext ctx) {
+            channelContext = ctx;
+        }
+
+        @Override
+        public void handlerRemoved(ChannelHandlerContext ctx) {
+            abortSyntheticReset();
+            channelContext = null;
+        }
+
         boolean beginSyntheticReset(int reservedTeleportId) {
-            return syntheticResetGate.begin(reservedTeleportId);
+            ChannelHandlerContext ctx = channelContext;
+            if (ctx == null || !ctx.executor().inEventLoop()) {
+                throw new IllegalStateException("Synthetic reset must begin on the downstream channel event loop");
+            }
+            if (!syntheticResetGate.begin(reservedTeleportId)) return false;
+            cancelSyntheticResetTimeout();
+            syntheticResetTimeout = ctx.executor().schedule(() -> {
+                syntheticResetGate.abort();
+                syntheticResetTimeout = null;
+                if (log != null) log.warning("[RealCoords] synthetic reset acknowledgement timed out; gate aborted");
+            }, transform.syntheticAckTimeoutMillis(), TimeUnit.MILLISECONDS);
+            return true;
         }
 
         void abortSyntheticReset() {
             syntheticResetGate.abort();
+            cancelSyntheticResetTimeout();
+        }
+
+        private void cancelSyntheticResetTimeout() {
+            ScheduledFuture<?> timeout = syntheticResetTimeout;
+            syntheticResetTimeout = null;
+            if (timeout != null) timeout.cancel(false);
         }
 
         int replayCachedChunks(ChannelHandlerContext ctx, int centerChunkX, int centerChunkZ, int limit) {
@@ -227,6 +258,7 @@ final class JavaSessionHook {
             }
             if (message instanceof Packet packet) {
                 if (syntheticResetGate.shouldSuppress(packet)) {
+                    if (!syntheticResetGate.active()) cancelSyntheticResetTimeout();
                     promise.setSuccess();
                     return;
                 }
