@@ -8,13 +8,17 @@ package dev.realcoords;
  * packet and all subsequent world packets.
  */
 final class JavaOriginState {
+    record Offsets(int x, int z) {
+    }
+
     record Snapshot(int offsetX, int offsetZ, boolean changed, boolean initialized) {
     }
 
     private final ShiftConfig config;
     private int dimension;
-    private volatile int offsetX;
-    private volatile int offsetZ;
+    private int offsetX;
+    private int offsetZ;
+    private volatile Offsets publishedOffsets = new Offsets(0, 0);
     private double lastX;
     private double lastZ;
     private boolean hasPosition;
@@ -29,6 +33,7 @@ final class JavaOriginState {
         offsetZ = 0;
         hasPosition = false;
         resetPending = true;
+        publishOffsets();
     }
 
     void respawn(int nextDimension) {
@@ -61,6 +66,7 @@ final class JavaOriginState {
         lastX = x;
         lastZ = z;
         hasPosition = true;
+        publishOffsets();
         return new Snapshot(offsetX, offsetZ, oldX != offsetX || oldZ != offsetZ, true);
     }
 
@@ -74,12 +80,20 @@ final class JavaOriginState {
         return true;
     }
 
+    Offsets offsets() {
+        return publishedOffsets;
+    }
+
     int offsetX() {
-        return offsetX;
+        return publishedOffsets.x();
     }
 
     int offsetZ() {
-        return offsetZ;
+        return publishedOffsets.z();
+    }
+
+    private void publishOffsets() {
+        publishedOffsets = new Offsets(offsetX, offsetZ);
     }
 
     private int candidateOffset(double real, int current) {
