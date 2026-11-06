@@ -254,7 +254,9 @@ final class JavaPacketTransform {
         if (packet instanceof ClientboundEntityPositionSyncPacket sync) {
             if (entityReplayCache != null && !replayingCachedPackets) {
                 Vector3d absolute = sync.isStepped()
-                        ? sync.getSteps().get(sync.getSteps().size() - 1).position() : sync.getEndPosition();
+                        ? (sync.getSteps().isEmpty() ? null
+                                : sync.getSteps().get(sync.getSteps().size() - 1).position())
+                        : sync.getEndPosition();
                 if (absolute != null) {
                     entityReplayCache.updatePosition(sync.getId(), absolute.getX(), absolute.getZ());
                     cacheEntity(sync.getId(), EntityReplayCache.Kind.POSITION, 0, sync);
@@ -395,6 +397,7 @@ final class JavaPacketTransform {
             return merchant.withOffers(offers);
         }
         if (packet instanceof ClientboundSetEquipmentPacket equipment) {
+            cacheEntity(equipment.getEntityId(), EntityReplayCache.Kind.EQUIPMENT, 0, equipment);
             Equipment[] entries = equipment.getEquipment().clone();
             for (int i = 0; i < entries.length; i++) {
                 Equipment entry = entries[i];
@@ -421,15 +424,6 @@ final class JavaPacketTransform {
         if (packet instanceof ClientboundSetEntityDataPacket metadata) {
             cacheEntity(metadata.getEntityId(), EntityReplayCache.Kind.METADATA, 0, metadata);
             return metadata.withMetadata(shiftMetadata(metadata.getMetadata()));
-        }
-        if (packet instanceof ClientboundSetEquipmentPacket equipment) {
-            cacheEntity(equipment.getEntityId(), EntityReplayCache.Kind.EQUIPMENT, 0, equipment);
-            Equipment[] entries = equipment.getEquipment().clone();
-            for (int i = 0; i < entries.length; i++) {
-                Equipment entry = entries[i];
-                entries[i] = new Equipment(entry.getSlot(), shiftItemStack(entry.getItem()));
-            }
-            return equipment.withEquipment(entries);
         }
         if (packet instanceof ClientboundBlockEntityDataPacket blockEntity) {
             cacheBlockEntity(blockEntity);
