@@ -260,7 +260,7 @@ Push 到 main、提交 Pull Request，或手動執行 **Actions → Build RealCo
 - [x] GitHub Actions 編譯 Java 21 專案並執行 JUnit 測試。
 - [x] Java downstream hook 的 pipeline 插入位置與連線時序已依 Geyser／MCProtocolLib 原始碼調查。
 - [x] Java 模式已接上 Java protocol transformer 與 Bedrock 輔助 ActionBar hook。
-- [x] 單元測試涵蓋初始原點、相對位置旗標、玩家移動往返、區塊座標與異常移動安全閘。
+- [x] 單元測試涵蓋初始原點、相對與混合位置旗標、玩家移動往返、Netty EmbeddedChannel 封包替換、區塊座標與異常移動安全閘。
 
 ### 實機驗收清單
 
@@ -280,8 +280,7 @@ Push 到 main、提交 Pull Request，或手動執行 **Actions → Build RealCo
 
 ### 已知限制／風險
 
-1. **未完整轉換的封包**：Java 模式仍有未涵蓋的絕對座標封包與 metadata／地圖定位資料；login／respawn 的 `lastDeathPos` 也尚未處理。命令方塊、結構方塊與拼圖方塊位置已加入轉換，但仍需實機核對。
-2. **Java 模式封包覆蓋仍不完整**：Java 層目前只改寫已明確支援的封包。尚未處理的絕對座標封包、login／respawn 的 `lastDeathPos`、地圖資料與部分特殊封包，可能在偏移狀態下錯位。遇到這些功能前應先在測試世界驗證。
+1. **未完整轉換的封包**：Java 模式目前只改寫已明確支援的封包。尚未處理的絕對座標封包、地圖資料與部分特殊封包，可能在偏移狀態下錯位；login／respawn 的 `lastDeathPos` 暫時保持原始座標，尚未平移。命令方塊、結構方塊與拼圖方塊位置已加入轉換，但仍需實機核對。
 3. **實體朝向**：部分實體重新送出時，朝向可能暫時歸零，直到收到下一次移動更新。
 4. **載具**：騎乘載具時發生原點切換，可能短暫抖動。
 5. **區塊快取**：快取上限是每位玩家各自計算；多人使用時需實際監控整體記憶體。
