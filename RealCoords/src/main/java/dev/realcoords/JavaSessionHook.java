@@ -85,7 +85,7 @@ final class JavaSessionHook {
                     @Override
                     public void connected(ConnectedEvent event) {
                         if (finished.compareAndSet(false, true)) {
-                            installOnChannel(session, config, log);
+                            installOnChannel(session, config, origin, log);
                         }
                         session.removeListener(this);
                     }
