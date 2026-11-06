@@ -134,7 +134,7 @@ final class ChunkReplayCache {
         return snapshotNearestFirst(centerChunkX, centerChunkZ, 0, limit);
     }
 
-    synchronized List<ReplayChunk> snapshotNearestFirst(int centerChunkX, int centerChunkZ,
+    synchronized List<ReplayChunk> snapshotWithinRadius(int centerChunkX, int centerChunkZ,
                                                          int radiusChunks, int limit) {
         if (radiusChunks < 0) return List.of();
         long radiusSquared = (long) radiusChunks * radiusChunks;
