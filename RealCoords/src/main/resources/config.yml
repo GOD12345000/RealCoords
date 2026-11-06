@@ -7,7 +7,7 @@ origin-shift:
   layer: java
   # 偏移量的對齊單位，必須是 16 的倍數（會自動修正）
   alignment: 256
-  # 基岩版客戶端看到的座標超過此值，就把原點移到玩家附近
+  # 真實 X/Z 座標超過此值時，登入／重生／遠距傳送會選擇靠近玩家的新原點
   trigger-distance: 50000
   # 真實座標回到此範圍內（且目前有偏移）才歸零。必須小於 trigger-distance（遲滯）
   reset-distance: 20000
