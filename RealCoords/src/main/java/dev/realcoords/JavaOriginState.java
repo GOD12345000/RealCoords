@@ -15,6 +15,7 @@ final class JavaOriginState {
     }
 
     private final ShiftConfig config;
+    private final java.util.Map<Integer, Offsets> dimensionOffsets = new java.util.HashMap<>();
     private int dimension;
     private int offsetX;
     private int offsetZ;
@@ -29,6 +30,8 @@ final class JavaOriginState {
     }
 
     void login() {
+        dimensionOffsets.clear();
+        dimension = 0;
         offsetX = 0;
         offsetZ = 0;
         hasPosition = false;
@@ -37,7 +40,12 @@ final class JavaOriginState {
     }
 
     void respawn(int nextDimension) {
+        dimensionOffsets.put(dimension, new Offsets(offsetX, offsetZ));
+        Offsets restored = dimensionOffsets.getOrDefault(nextDimension, new Offsets(0, 0));
         dimension = nextDimension;
+        offsetX = restored.x();
+        offsetZ = restored.z();
+        publishOffsets();
         hasPosition = false;
         resetPending = true;
     }
@@ -105,10 +113,16 @@ final class JavaOriginState {
 
     private int candidateOffset(double real, int current) {
         ShiftConfig.Dim dim = config.dim(dimension);
-        if (!dim.enabled || Math.abs(real) <= dim.trigger) {
+        if (!dim.enabled) {
             return 0;
         }
-        return aligned(real, dim.alignment);
+        if (current != 0 && Math.abs(real) < dim.reset) {
+            return 0;
+        }
+        if (Math.abs(real - current) > dim.trigger) {
+            return aligned(real, dim.alignment);
+        }
+        return current;
     }
 
     private int nextOffset(int current, double real) {
