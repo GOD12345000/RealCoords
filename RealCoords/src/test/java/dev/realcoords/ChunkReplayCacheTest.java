@@ -140,16 +140,17 @@ class ChunkReplayCacheTest {
     }
 
     @Test
-    void replacingBaseChunkKeepsNewerOverlay() {
+    void newerBaseChunkDiscardsOlderOverlays() {
         ChunkReplayCache cache = new ChunkReplayCache(4, 1024, false);
         cache.put(1, 1, new byte[]{1});
-        cache.putOverlay(1, 1, ChunkReplayCache.OverlayType.BLOCK_UPDATE, new ChunkReplayCache.BlockPos(7, 64, 0), new byte[]{9});
+        cache.putOverlay(1, 1, ChunkReplayCache.OverlayType.BLOCK_UPDATE,
+                new ChunkReplayCache.BlockPos(7, 64, 0), new byte[]{9});
         cache.put(1, 1, new byte[]{2});
 
         ChunkReplayCache.ReplayChunk replay = cache.get(1, 1);
         assertArrayEquals(new byte[]{2}, replay.payload());
-        assertEquals(1, replay.overlays().size());
-        assertArrayEquals(new byte[]{9}, replay.overlays().getFirst().payload());
+        assertTrue(replay.overlays().isEmpty());
+        assertEquals(1, cache.storedBytes());
     }
 
     @Test
