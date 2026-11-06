@@ -50,6 +50,20 @@ class ChunkReplayCacheTest {
     }
 
     @Test
+    void laterOverlayRefreshesItsBaseChunkLruRecency() {
+        ChunkReplayCache cache = new ChunkReplayCache(2, 1024, false);
+        cache.put(0, 0, new byte[]{0});
+        cache.put(1, 0, new byte[]{1});
+        assertTrue(cache.putOverlay(0, 0, ChunkReplayCache.OverlayType.BLOCK_UPDATE,
+                new ChunkReplayCache.BlockPos(0, 64, 0), new byte[]{2}));
+        cache.put(2, 0, new byte[]{3});
+
+        assertNotNull(cache.get(0, 0));
+        assertNull(cache.get(1, 0));
+        assertNotNull(cache.get(2, 0));
+    }
+
+    @Test
     void refusesOversizedEntryWithoutEvictingExistingData() {
         ChunkReplayCache cache = new ChunkReplayCache(4, 4, false);
         assertTrue(cache.put(0, 0, new byte[]{1, 2}));
