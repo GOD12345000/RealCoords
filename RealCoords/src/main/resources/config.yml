@@ -39,6 +39,8 @@ chunk-cache:
   compress: true
   # 每位玩家最多保存的區塊數
   max-chunks: 2500
+  # 每位玩家快取的記憶體預算（含壓縮後區塊資料與更新覆蓋資料）
+  max-bytes: 33554432
   # 距離觸發值還有多遠（格）就開始保存區塊。必須大於伺服器視距（格）
   activate-margin: 1500
   # 換原點後每個 tick 重送幾個區塊
