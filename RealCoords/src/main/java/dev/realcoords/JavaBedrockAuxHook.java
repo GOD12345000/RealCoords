@@ -36,7 +36,7 @@ final class JavaBedrockAuxHook extends ChannelDuplexHandler {
     private final ExtensionLogger log;
     private static final Set<String> WATCH = Set.of(
             "UpdateSubChunkBlocksPacket", "SubChunkPacket", "LevelEventGenericPacket",
-            "MapItemDataPacket", "PositionTrackingDBServerBroadcastPacket", "AddPaintingPacket");
+            "PositionTrackingDBServerBroadcastPacket", "AddPaintingPacket");
     private final Set<String> warned = new HashSet<>();
     private final Set<BedrockPacket> own = Collections.newSetFromMap(new IdentityHashMap<>());
     private Channel channel;
