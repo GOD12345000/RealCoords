@@ -130,7 +130,7 @@ class ChunkReplayCacheTest {
     void overlaysAreRemovedWhenChunkLeavesRetentionRadius() {
         ChunkReplayCache cache = new ChunkReplayCache(4, 1024, false);
         cache.put(0, 0, new byte[]{1});
-        cache.putOverlay(0, 0, ChunkReplayCache.OverlayType.BLOCK_ENTITY, 2L, new byte[]{3, 4});
+        cache.putOverlay(0, 0, ChunkReplayCache.OverlayType.BLOCK_ENTITY, new ChunkReplayCache.BlockPos(2, 64, 0), new byte[]{3, 4});
         cache.put(10, 0, new byte[]{5});
         cache.evictOutside(10, 0, 2);
 
