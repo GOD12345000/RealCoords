@@ -389,6 +389,10 @@ final class JavaPacketTransform {
             return spawn.withGlobalPos(shiftGlobalPos(spawn.getGlobalPos()));
         }
         if (packet instanceof ClientboundSetChunkCacheCenterPacket center) {
+            if (chunkReplayCache != null) {
+                int radius = viewDistanceChunks + (config == null ? 4 : config.evictMarginChunks);
+                chunkReplayCache.evictOutside(center.getChunkX(), center.getChunkZ(), radius);
+            }
             return center.withChunkX(center.getChunkX() - origin.offsetX() / 16)
                     .withChunkZ(center.getChunkZ() - origin.offsetZ() / 16);
         }
@@ -795,8 +799,10 @@ final class JavaPacketTransform {
 
     ReplaySnapshot prepareReplaySnapshot(int centerChunkX, int centerChunkZ,
                                          double centerX, double centerZ, double entityRadius) {
+        int chunkRadius = viewDistanceChunks + (config == null ? 4 : config.evictMarginChunks);
         List<ChunkReplayCache.ReplayChunk> chunks = chunkReplayCache == null ? List.of()
-                : chunkReplayCache.snapshotNearestFirst(centerChunkX, centerChunkZ, chunkReplayCache.size());
+                : chunkReplayCache.snapshotWithinRadius(centerChunkX, centerChunkZ, chunkRadius,
+                        chunkReplayCache.size());
         List<EntityReplayCache.ReplayPacket> entities = entityReplayCache == null ? List.of()
                 : entityReplayCache.snapshotNearestFirst(centerX, centerZ, entityRadius, 512);
         List<GlobalStateReplayCache.Snapshot> global = globalStateReplayCache == null ? List.of()
