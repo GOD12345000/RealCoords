@@ -643,7 +643,10 @@ final class JavaPacketTransform {
     }
 
     private boolean acceptMovementPosition(double realX, double realZ) {
-        boolean replayCacheAvailable = chunkReplayCache != null && chunkReplayCache.size() > 0;
+        int chunkX = (int) Math.floor(realX / 16.0);
+        int chunkZ = (int) Math.floor(realZ / 16.0);
+        boolean replayCacheAvailable = chunkReplayCache != null
+                && !chunkReplayCache.snapshotWithinRadius(chunkX, chunkZ, 1, 1).isEmpty();
         if (!origin.acceptServerboundPosition(realX, realZ, maxServerboundJump, replayCacheAvailable)) return false;
         JavaOriginState.Snapshot movementChange = origin.takeMovementOriginChange();
         if (movementChange != null && movementChange.changed()) {
