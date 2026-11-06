@@ -6,9 +6,10 @@ import java.util.Map;
 /**
  * Per-player origin decision state for Java-layer packet rewriting.
  *
- * This class contains only the phase-1 decision logic. It does not mutate packets;
- * callers must apply the returned offsets atomically before forwarding the position
- * packet and all subsequent world packets.
+ * This class owns per-dimension origin decisions for initial login/respawn,
+ * server teleports, and the opt-in live movement path. It does not mutate packets;
+ * callers must reset/replay the Geyser world state before forwarding movement
+ * under a newly selected live origin.
  */
 final class JavaOriginState {
     record Offsets(int x, int z) {
