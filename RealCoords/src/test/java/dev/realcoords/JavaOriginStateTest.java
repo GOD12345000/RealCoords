@@ -103,6 +103,21 @@ class JavaOriginStateTest {
     }
 
     @Test
+    void initialAbsoluteAxesCanArriveInSeparatePackets() {
+        JavaOriginState.Snapshot xOnly =
+                state.absolutePosition(23_000_000, 12.5, 10, true, false);
+        assertNotEquals(0, xOnly.offsetX());
+        assertEquals(0, xOnly.offsetZ());
+
+        JavaOriginState.Snapshot zOnly =
+                state.absolutePosition(2.5, 17_000_000, 10, false, true);
+        assertNotEquals(0, zOnly.offsetX());
+        assertNotEquals(0, zOnly.offsetZ());
+        assertTrue(Math.abs(23_000_002.5 - zOnly.offsetX()) < 256);
+        assertTrue(Math.abs(17_000_000 - zOnly.offsetZ()) < 256);
+    }
+
+    @Test
     void eachDimensionRestoresItsOwnOrigin() {
         state.absolutePosition(100_000, 100_000, 10);
         int overworldOffset = state.offsetX();
