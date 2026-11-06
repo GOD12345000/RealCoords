@@ -42,6 +42,8 @@ import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.Clien
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundTrackedWaypointPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundMovePlayerPosPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundMovePlayerPosRotPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.level.ServerboundMoveVehiclePacket;
+import org.cloudburstmc.math.vector.Vector3d;
 import org.junit.jupiter.api.Test;
 
 import java.util.BitSet;
@@ -119,6 +121,55 @@ class JavaPacketTransformTest {
         assertEquals(oldOffsetX, transform.offsetX());
         assertEquals(oldOffsetZ, transform.offsetZ());
         assertNull(transform.takeOriginChange());
+    }
+
+    @Test
+    void vehicleMovementRestoresOriginBeforeJumpValidationAndForwarding() {
+        ShiftConfig config = new ShiftConfig();
+        config.dims.put(0, new ShiftConfig.Dim());
+        JavaPacketTransform transform = new JavaPacketTransform(config);
+        Key world = Key.key("minecraft:overworld");
+        PlayerSpawnInfo spawnInfo = new PlayerSpawnInfo(0, world, 0L, GameMode.SURVIVAL,
+                null, false, false, null, 0, 63);
+        transform.clientbound(new ClientboundLoginPacket(1, false, new Key[]{world},
+                20, 10, 10, false, true, false, spawnInfo, true, true));
+        transform.clientbound(new ClientboundPlayerPositionPacket(
+                1, 23_000_000, 70, -17_000_000, 0, 0, 0, 0, 0));
+        transform.takeOriginChange();
+
+        double localX = 112.5;
+        double localZ = -84.25;
+        ServerboundMoveVehiclePacket vehicleMove = new ServerboundMoveVehiclePacket(
+                Vector3d.from(localX, 70, localZ), 90, 90, true);
+        Packet forwarded = transform.serverbound(vehicleMove);
+
+        ServerboundMoveVehiclePacket restored = assertInstanceOf(ServerboundMoveVehiclePacket.class, forwarded);
+        assertEquals(localX + transform.offsetX(), restored.getPosition().getX());
+        assertEquals(localZ + transform.offsetZ(), restored.getPosition().getZ());
+        assertEquals(localX + transform.offsetX(), transform.realX());
+        assertEquals(localZ + transform.offsetZ(), transform.realZ());
+    }
+
+    @Test
+    void vehicleMovementDuringReplayUsesRestoredRealCoordinates() {
+        ShiftConfig config = new ShiftConfig();
+        config.dims.put(0, new ShiftConfig.Dim());
+        JavaPacketTransform transform = new JavaPacketTransform(config);
+        Key world = Key.key("minecraft:overworld");
+        PlayerSpawnInfo spawnInfo = new PlayerSpawnInfo(0, world, 0L, GameMode.SURVIVAL,
+                null, false, false, null, 0, 63);
+        transform.clientbound(new ClientboundLoginPacket(1, false, new Key[]{world},
+                20, 10, 10, false, true, false, spawnInfo, true, true));
+        transform.clientbound(new ClientboundPlayerPositionPacket(
+                1, 23_000_000, 70, -17_000_000, 0, 0, 0, 0, 0));
+        transform.takeOriginChange();
+
+        double localX = 118.0;
+        double localZ = -79.0;
+        assertTrue(transform.observeMovementDuringReplay(new ServerboundMoveVehiclePacket(
+                Vector3d.from(localX, 70, localZ), 90, 90, true)));
+        assertEquals(localX + transform.offsetX(), transform.realX());
+        assertEquals(localZ + transform.offsetZ(), transform.realZ());
     }
 
     @Test
