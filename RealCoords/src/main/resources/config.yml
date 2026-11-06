@@ -13,7 +13,7 @@ origin-shift:
   recenter-on-reload: 2048
   # 連續移動模式的精度觸發門檻；預設 100000 格。數值過大會降低 float 座標精度
   trigger-distance: 100000
-  # 真實座標回到此範圍內時歸零；必須小於 trigger-distance（遲滯）
+  # 真實座標回到此範圍內時歸零；必須小於 trigger-distance（載入時會檢查並警告／調整）
   reset-distance: 50000
   # bedrock 模式兩次換原點的最短間隔；Java 連續移動模式也會使用此冷卻時間
   cooldown-ticks: 100
@@ -24,7 +24,7 @@ origin-shift:
   # 每個維度可單獨覆寫 enabled / trigger-distance / reset-distance / alignment
   dimensions:
     overworld: { enabled: true }
-    the_nether: { enabled: true, trigger-distance: 6000, reset-distance: 2500, alignment: 128 }
+    the_nether: { enabled: true }
     the_end: { enabled: true }
 
 safety:
