@@ -132,9 +132,10 @@ final class JavaBedrockAuxHook extends ChannelDuplexHandler {
 
     private void update(Vector3f local, Vector3f rotation) {
         if (local == null) return;
-        realX = local.getX() + origin.offsetX();
+        JavaOriginState.Offsets offsets = origin.offsets();
+        realX = local.getX() + offsets.x();
         realY = local.getY() - config.eyeHeight;
-        realZ = local.getZ() + origin.offsetZ();
+        realZ = local.getZ() + offsets.z();
         if (rotation != null) yaw = rotation.getY();
         havePosition = true;
     }
@@ -163,14 +164,15 @@ final class JavaBedrockAuxHook extends ChannelDuplexHandler {
     }
 
     private String formatActionBar(long now) {
+        JavaOriginState.Offsets offsets = origin.offsets();
         String result = config.abFormat
                 .replace("{x}", number(realX))
                 .replace("{y}", number(realY))
                 .replace("{z}", number(realZ))
                 .replace("{facing}", facing())
                 .replace("{dim}", dimension == 1 ? "nether" : dimension == 2 ? "end" : "overworld")
-                .replace("{offx}", Integer.toString(origin.offsetX()))
-                .replace("{offz}", Integer.toString(origin.offsetZ()));
+                .replace("{offx}", Integer.toString(offsets.x()))
+                .replace("{offz}", Integer.toString(offsets.z()));
         if (config.abMergeJava && javaActionBar != null
                 && now - javaActionBarAt < config.abJavaKeepMs) {
             result += config.abSep + javaActionBar;
