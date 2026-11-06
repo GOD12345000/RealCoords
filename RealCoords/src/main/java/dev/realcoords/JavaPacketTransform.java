@@ -42,6 +42,9 @@ import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.Clie
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundSetEntityLinkPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundSetPassengersPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundSetEntityMotionPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundMoveEntityPosPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundMoveEntityPosRotPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundMoveEntityRotPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundMoveVehiclePacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.player.ClientboundPlayerLookAtPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundEntityPositionSyncPacket;
@@ -207,7 +210,21 @@ final class JavaPacketTransform {
         if (packet instanceof ClientboundTeleportEntityPacket teleport) {
             Vector3d p = teleport.getPosition();
             boolean relativeX = teleport.getRelatives().contains(PositionElement.X);
+            boolean relativeY = teleport.getRelatives().contains(PositionElement.Y);
             boolean relativeZ = teleport.getRelatives().contains(PositionElement.Z);
+            boolean relativeYaw = teleport.getRelatives().contains(PositionElement.Y_ROT);
+            boolean relativePitch = teleport.getRelatives().contains(PositionElement.X_ROT);
+            EntityReplayCache.Position previous = entityReplayCache == null || replayingCachedPackets
+                    ? null : entityReplayCache.position(teleport.getId());
+            double x = relativeX && previous != null ? previous.x() + p.getX() : p.getX();
+            double y = relativeY && previous != null ? previous.y() + p.getY() : p.getY();
+            double z = relativeZ && previous != null ? previous.z() + p.getZ() : p.getZ();
+            float yaw = relativeYaw && previous != null ? previous.yaw() + teleport.getYRot() : teleport.getYRot();
+            float pitch = relativePitch && previous != null ? previous.pitch() + teleport.getXRot() : teleport.getXRot();
+            if (entityReplayCache != null && !replayingCachedPackets) {
+                entityReplayCache.updatePosition(teleport.getId(), x, y, z, yaw, pitch, teleport.isOnGround());
+                cacheEntityPosition(teleport.getId());
+            }
             return teleport.withPosition(Vector3d.from(
                     relativeX ? p.getX() : p.getX() - origin.offsetX(),
                     p.getY(),
@@ -217,6 +234,43 @@ final class JavaPacketTransform {
             if (lookAt.getTargetEntityOrigin() != null) return packet;
             return lookAt.withX(lookAt.getX() - origin.offsetX()).withZ(lookAt.getZ() - origin.offsetZ());
         }
+        if (packet instanceof ClientboundMoveEntityPosPacket move) {
+            double dx = move.getMoveX(), dy = move.getMoveY(), dz = move.getMoveZ();
+            if (move.getSteps() != null) {
+                dx = 0; dy = 0; dz = 0;
+                for (ClientboundMoveEntityPosPacket.DeltaStep step : move.getSteps()) {
+                    dx += step.moveX(); dy += step.moveY(); dz += step.moveZ();
+                }
+            }
+            if (entityReplayCache != null && !replayingCachedPackets) {
+                entityReplayCache.updateDelta(move.getEntityId(), dx, dy, dz, null, null, move.isOnGround());
+                cacheEntityPosition(move.getEntityId());
+            }
+            return packet;
+        }
+        if (packet instanceof ClientboundMoveEntityPosRotPacket move) {
+            double dx = move.getMoveX(), dy = move.getMoveY(), dz = move.getMoveZ();
+            if (move.getSteps() != null) {
+                dx = 0; dy = 0; dz = 0;
+                for (ClientboundMoveEntityPosRotPacket.DeltaStep step : move.getSteps()) {
+                    dx += step.moveX(); dy += step.moveY(); dz += step.moveZ();
+                }
+            }
+            if (entityReplayCache != null && !replayingCachedPackets) {
+                entityReplayCache.updateDelta(move.getEntityId(), dx, dy, dz,
+                        move.getYaw(), move.getPitch(), move.isOnGround());
+                cacheEntityPosition(move.getEntityId());
+            }
+            return packet;
+        }
+        if (packet instanceof ClientboundMoveEntityRotPacket move) {
+            if (entityReplayCache != null && !replayingCachedPackets) {
+                entityReplayCache.updateDelta(move.getEntityId(), 0, 0, 0,
+                        move.getYaw(), move.getPitch(), move.isOnGround());
+                cacheEntityPosition(move.getEntityId());
+            }
+            return packet;
+        }
         if (packet instanceof ClientboundMoveVehiclePacket vehicle) {
             Vector3d p = vehicle.getPosition();
             return vehicle.withPosition(Vector3d.from(p.getX() - origin.offsetX(), p.getY(),
@@ -225,7 +279,8 @@ final class JavaPacketTransform {
         if (packet instanceof ClientboundAddEntityPacket entity) {
             cacheEntity(entity.getEntityId(), EntityReplayCache.Kind.SPAWN, 0, entity);
             if (entityReplayCache != null && !replayingCachedPackets) {
-                entityReplayCache.updatePosition(entity.getEntityId(), entity.getX(), entity.getZ());
+                entityReplayCache.updatePosition(entity.getEntityId(), entity.getX(), entity.getY(), entity.getZ(),
+                        entity.getYaw(), entity.getPitch(), false);
             }
             return entity.withX(entity.getX() - origin.offsetX()).withZ(entity.getZ() - origin.offsetZ());
         }
@@ -268,8 +323,9 @@ final class JavaPacketTransform {
                                 : sync.getSteps().get(sync.getSteps().size() - 1).position())
                         : sync.getEndPosition();
                 if (absolute != null) {
-                    entityReplayCache.updatePosition(sync.getId(), absolute.getX(), absolute.getZ());
-                    cacheEntity(sync.getId(), EntityReplayCache.Kind.POSITION, 0, sync);
+                    entityReplayCache.updatePosition(sync.getId(), absolute.getX(), absolute.getY(), absolute.getZ(),
+                            sync.getYRot(), sync.getXRot(), sync.isOnGround());
+                    cacheEntityPosition(sync.getId());
                 }
             }
             if (sync.isStepped()) {
@@ -657,6 +713,16 @@ final class JavaPacketTransform {
             replayingCachedPackets = false;
         }
         return List.copyOf(replay);
+    }
+
+    private void cacheEntityPosition(int entityId) {
+        if (entityReplayCache == null || replayingCachedPackets) return;
+        EntityReplayCache.Position position = entityReplayCache.position(entityId);
+        if (position == null) return;
+        ClientboundEntityPositionSyncPacket absolute = new ClientboundEntityPositionSyncPacket(
+                entityId, false, Vector3d.from(position.x(), position.y(), position.z()), null,
+                position.yaw(), position.pitch(), position.onGround());
+        cacheEntity(entityId, EntityReplayCache.Kind.POSITION, 0, absolute);
     }
 
     private void cacheEntity(int entityId, EntityReplayCache.Kind kind, int subKey, MinecraftPacket packet) {
