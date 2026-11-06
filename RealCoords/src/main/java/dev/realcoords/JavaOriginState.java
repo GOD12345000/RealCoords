@@ -18,9 +18,8 @@ final class JavaOriginState {
     }
 
     private final ShiftConfig config;
-    private final Map<Integer, Offsets> offsetsByDimension = new HashMap<>();
     // The Netty handler is channel-confined; publish the immutable pair for the Bedrock event loop.
-    private final java.util.Map<Integer, Offsets> dimensionOffsets = new java.util.HashMap<>();
+    private final Map<Integer, Offsets> dimensionOffsets = new HashMap<>();
     private int dimension;
     private int offsetX;
     private int offsetZ;
