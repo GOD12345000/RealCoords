@@ -13,38 +13,41 @@ import java.util.zip.Deflater;
 import java.util.zip.DeflaterOutputStream;
 import java.util.zip.InflaterInputStream;
 
-/**
- * Bounded per-session cache for serialized Java chunk packets.
- *
- * The cache deliberately knows nothing about MCProtocolLib packet classes. The
- * caller must serialize an immutable snapshot before insertion and deserialize
- * the returned payload on the channel event loop when replaying it.
- */
+/** Bounded per-session cache for serialized Java chunk packets and later world-state overlays. */
 final class ChunkReplayCache {
-    record ChunkPos(int x, int z) {
-    }
+    enum OverlayType { BLOCK_UPDATE, BLOCK_ENTITY }
 
-    record ReplayChunk(int x, int z, byte[] payload) {
-        ReplayChunk {
+    record ChunkPos(int x, int z) { }
+
+    record ReplayOverlay(OverlayType type, long positionKey, byte[] payload) {
+        ReplayOverlay {
+            Objects.requireNonNull(type, "type");
             payload = payload.clone();
         }
-
-        @Override
-        public byte[] payload() {
-            return payload.clone();
-        }
+        @Override public byte[] payload() { return payload.clone(); }
     }
 
-    private record StoredChunk(byte[] bytes, int originalLength, boolean compressed) {
-        long memorySize() {
-            return bytes.length;
+    record ReplayChunk(int x, int z, byte[] payload, List<ReplayOverlay> overlays) {
+        ReplayChunk {
+            payload = payload.clone();
+            overlays = List.copyOf(overlays);
         }
+        @Override public byte[] payload() { return payload.clone(); }
+    }
+
+    private record OverlayKey(OverlayType type, long positionKey) { }
+    private record StoredChunk(byte[] bytes, int originalLength, boolean compressed) {
+        long memorySize() { return bytes.length; }
+    }
+    private record StoredOverlay(byte[] bytes) {
+        long memorySize() { return bytes.length + 24L; }
     }
 
     private final int maxChunks;
     private final long maxBytes;
     private final boolean compress;
     private final LinkedHashMap<ChunkPos, StoredChunk> chunks = new LinkedHashMap<>(16, 0.75f, true);
+    private final Map<ChunkPos, LinkedHashMap<OverlayKey, StoredOverlay>> overlays = new java.util.HashMap<>();
     private long storedBytes;
 
     ChunkReplayCache(int maxChunks, long maxBytes, boolean compress) {
@@ -55,39 +58,51 @@ final class ChunkReplayCache {
         this.compress = compress;
     }
 
-    /**
-     * Inserts or replaces a serialized chunk. Returns false if the payload alone
-     * exceeds the configured memory budget; existing entries remain untouched.
-     */
+    /** Inserts/replaces a complete serialized chunk packet, retaining later overlays. */
     synchronized boolean put(int chunkX, int chunkZ, byte[] payload) {
         Objects.requireNonNull(payload, "payload");
         if (payload.length > maxBytes) return false;
-
-        byte[] raw = payload.clone();
-        StoredChunk replacement = encode(raw);
+        StoredChunk replacement = encode(payload.clone());
         if (replacement.memorySize() > maxBytes) return false;
 
         ChunkPos key = new ChunkPos(chunkX, chunkZ);
         StoredChunk previous = chunks.remove(key);
         if (previous != null) storedBytes -= previous.memorySize();
-
         chunks.put(key, replacement);
         storedBytes += replacement.memorySize();
         evictToBudget();
         return chunks.containsKey(key);
     }
 
-    /** Returns a defensive payload copy and marks this entry as recently used. */
+    /** Keeps only the latest update for a position/type while its base chunk is cached. */
+    synchronized boolean putOverlay(int chunkX, int chunkZ, OverlayType type, long positionKey, byte[] payload) {
+        Objects.requireNonNull(type, "type");
+        Objects.requireNonNull(payload, "payload");
+        ChunkPos chunk = new ChunkPos(chunkX, chunkZ);
+        if (!chunks.containsKey(chunk) || payload.length + 24L > maxBytes) return false;
+
+        LinkedHashMap<OverlayKey, StoredOverlay> perChunk =
+                overlays.computeIfAbsent(chunk, ignored -> new LinkedHashMap<>());
+        OverlayKey key = new OverlayKey(type, positionKey);
+        StoredOverlay previous = perChunk.remove(key);
+        if (previous != null) storedBytes -= previous.memorySize();
+        StoredOverlay replacement = new StoredOverlay(payload.clone());
+        perChunk.put(key, replacement);
+        storedBytes += replacement.memorySize();
+        evictToBudget();
+        return chunks.containsKey(chunk);
+    }
+
     synchronized ReplayChunk get(int chunkX, int chunkZ) {
         ChunkPos key = new ChunkPos(chunkX, chunkZ);
         StoredChunk stored = chunks.get(key);
-        return stored == null ? null : new ReplayChunk(chunkX, chunkZ, decode(stored));
+        return stored == null ? null : replayChunk(key, stored);
     }
 
     synchronized boolean remove(int chunkX, int chunkZ) {
-        StoredChunk removed = chunks.remove(new ChunkPos(chunkX, chunkZ));
-        if (removed == null) return false;
-        storedBytes -= removed.memorySize();
+        ChunkPos key = new ChunkPos(chunkX, chunkZ);
+        if (!chunks.containsKey(key)) return false;
+        evictChunk(key);
         return true;
     }
 
@@ -105,6 +120,7 @@ final class ChunkReplayCache {
             if (dx * dx + dz * dz > radiusSquared) {
                 storedBytes -= entry.getValue().memorySize();
                 iterator.remove();
+                subtractOverlays(entry.getKey());
             }
         }
     }
@@ -113,39 +129,59 @@ final class ChunkReplayCache {
         if (limit <= 0 || chunks.isEmpty()) return List.of();
         List<Map.Entry<ChunkPos, StoredChunk>> ordered = new ArrayList<>(chunks.entrySet());
         ordered.sort(Comparator
-                .comparingLong((Map.Entry<ChunkPos, StoredChunk> entry) -> distanceSquared(
-                        entry.getKey(), centerChunkX, centerChunkZ))
+                .comparingLong((Map.Entry<ChunkPos, StoredChunk> entry) ->
+                        distanceSquared(entry.getKey(), centerChunkX, centerChunkZ))
                 .thenComparingInt(entry -> entry.getKey().x())
                 .thenComparingInt(entry -> entry.getKey().z()));
-
         List<ReplayChunk> result = new ArrayList<>(Math.min(limit, ordered.size()));
         for (Map.Entry<ChunkPos, StoredChunk> entry : ordered) {
             if (result.size() >= limit) break;
-            ChunkPos pos = entry.getKey();
-            result.add(new ReplayChunk(pos.x(), pos.z(), decode(entry.getValue())));
+            result.add(replayChunk(entry.getKey(), entry.getValue()));
         }
         return List.copyOf(result);
     }
 
-    synchronized int size() {
-        return chunks.size();
-    }
-
-    synchronized long storedBytes() {
-        return storedBytes;
-    }
+    synchronized int size() { return chunks.size(); }
+    synchronized long storedBytes() { return storedBytes; }
 
     synchronized void clear() {
         chunks.clear();
+        overlays.clear();
         storedBytes = 0;
+    }
+
+    private ReplayChunk replayChunk(ChunkPos pos, StoredChunk stored) {
+        List<ReplayOverlay> result = new ArrayList<>();
+        Map<OverlayKey, StoredOverlay> updates = overlays.get(pos);
+        if (updates != null) {
+            for (Map.Entry<OverlayKey, StoredOverlay> entry : updates.entrySet()) {
+                OverlayKey key = entry.getKey();
+                result.add(new ReplayOverlay(key.type(), key.positionKey(), entry.getValue().bytes()));
+            }
+        }
+        return new ReplayChunk(pos.x(), pos.z(), decode(stored), result);
     }
 
     private void evictToBudget() {
         var iterator = chunks.entrySet().iterator();
         while ((chunks.size() > maxChunks || storedBytes > maxBytes) && iterator.hasNext()) {
-            StoredChunk eldest = iterator.next().getValue();
-            storedBytes -= eldest.memorySize();
+            Map.Entry<ChunkPos, StoredChunk> eldest = iterator.next();
+            storedBytes -= eldest.getValue().memorySize();
             iterator.remove();
+            subtractOverlays(eldest.getKey());
+        }
+    }
+
+    private void evictChunk(ChunkPos key) {
+        StoredChunk removed = chunks.remove(key);
+        if (removed != null) storedBytes -= removed.memorySize();
+        subtractOverlays(key);
+    }
+
+    private void subtractOverlays(ChunkPos key) {
+        Map<OverlayKey, StoredOverlay> removed = overlays.remove(key);
+        if (removed != null) {
+            for (StoredOverlay overlay : removed.values()) storedBytes -= overlay.memorySize();
         }
     }
 
