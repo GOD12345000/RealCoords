@@ -8,6 +8,8 @@ import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.Clientbound
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.player.ClientboundPlayerPositionPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.ServerboundPlayerLoadedPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.ClientboundRespawnPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundGameEventPacket;
+import org.geysermc.mcprotocollib.protocol.data.game.level.notify.GameEvent;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.level.ServerboundAcceptTeleportationPacket;
 import org.junit.jupiter.api.Test;
 
@@ -88,6 +90,32 @@ class JavaSessionHookTest {
         assertTrue(handler.beginSyntheticReset(777778));
         handler.abortSyntheticReset();
         assertFalse(channel.isOpen());
+        channel.finishAndReleaseAll();
+    }
+
+    @Test
+    void buffersLiveWorldPacketsUntilAfterAllReplayStages() {
+        ShiftConfig config = new ShiftConfig();
+        config.dims.put(0, new ShiftConfig.Dim());
+        JavaSessionHook.JavaPacketTransformHandler handler =
+                new JavaSessionHook.JavaPacketTransformHandler(new JavaPacketTransform(config), null, null);
+        EmbeddedChannel channel = new EmbeddedChannel(handler);
+        ReoriginReplayPlan plan = handler.prepareReplayPlan(0, 0, 0, 0, 256);
+        ClientboundGameEventPacket live = new ClientboundGameEventPacket(GameEvent.START_RAINING, null);
+
+        assertTrue(channel.writeInbound(live));
+        assertNull(channel.readInbound());
+
+        handler.replayChunkBatch(channel.pipeline().context(handler), plan, 8);
+        handler.replayEntityBatch(channel.pipeline().context(handler), plan, 8);
+        handler.replayGlobalState(channel.pipeline().context(handler), plan);
+        assertEquals(ReoriginReplayPlan.Stage.LIVE_UPDATES, plan.stage());
+        handler.replayLiveUpdates(channel.pipeline().context(handler), plan, 8);
+
+        ClientboundGameEventPacket replayed = channel.readInbound();
+        assertNotNull(replayed);
+        assertEquals(GameEvent.START_RAINING, replayed.getNotification());
+        assertTrue(plan.complete());
         channel.finishAndReleaseAll();
     }
 
