@@ -15,6 +15,9 @@ import org.geysermc.mcprotocollib.protocol.data.game.level.block.BlockEntityInfo
 import org.geysermc.mcprotocollib.protocol.data.game.level.waypoint.ChunkWaypointData;
 import org.geysermc.mcprotocollib.protocol.data.game.level.waypoint.TrackedWaypoint;
 import org.geysermc.mcprotocollib.protocol.data.game.level.waypoint.Vec3iWaypointData;
+import org.geysermc.mcprotocollib.protocol.data.game.level.particle.Particle;
+import org.geysermc.mcprotocollib.protocol.data.game.level.particle.VibrationParticleData;
+import org.geysermc.mcprotocollib.protocol.data.game.level.particle.positionsource.BlockPositionSource;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.ClientboundLoginPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.ClientboundRespawnPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundAddEntityPacket;
@@ -223,7 +226,8 @@ final class JavaPacketTransform {
             return new ClientboundChunksBiomesPacket(shifted);
         }
         if (packet instanceof ClientboundLevelParticlesPacket particles) {
-            return particles.withX(particles.getX() - origin.offsetX())
+            return particles.withParticle(shiftParticle(particles.getParticle()))
+                    .withX(particles.getX() - origin.offsetX())
                     .withZ(particles.getZ() - origin.offsetZ());
         }
         if (packet instanceof ClientboundSoundPacket sound) {
@@ -232,7 +236,8 @@ final class JavaPacketTransform {
         if (packet instanceof ClientboundExplodePacket explosion) {
             Vector3d p = explosion.getCenter();
             return explosion.withCenter(Vector3d.from(p.getX() - origin.offsetX(), p.getY(),
-                    p.getZ() - origin.offsetZ()));
+                    p.getZ() - origin.offsetZ()))
+                    .withExplosionParticle(shiftParticle(explosion.getExplosionParticle()));
         }
         if (packet instanceof ClientboundOpenSignEditorPacket sign) {
             Vector3i p = sign.getPosition();
@@ -341,6 +346,18 @@ final class JavaPacketTransform {
 
     int offsetZ() {
         return origin.offsetZ();
+    }
+
+    private Particle shiftParticle(Particle particle) {
+        if (particle.getData() instanceof VibrationParticleData vibration
+                && vibration.getPositionSource() instanceof BlockPositionSource block) {
+            Vector3i p = block.getPosition();
+            VibrationParticleData shifted = new VibrationParticleData(
+                    new BlockPositionSource(Vector3i.from(p.getX() - origin.offsetX(), p.getY(),
+                            p.getZ() - origin.offsetZ())), vibration.getArrivalTicks());
+            return new Particle(particle.getType(), shifted);
+        }
+        return particle;
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})
