@@ -61,7 +61,7 @@ final class JavaOriginState {
     }
 
     /**
-     * Observe an absolute server position. A new origin is selected on the first
+     * Observe server position components. A new origin is selected on the first
      * position after login/respawn, or after a teleport farther than the view
      * distance. Ordinary movement never changes the origin in phase 1.
      */
@@ -98,7 +98,7 @@ final class JavaOriginState {
         if (absoluteZ || !needsAbsoluteZ) lastZ = nextZ;
         hasPosition = !needsAbsoluteX && !needsAbsoluteZ;
         publishOffsets();
-        offsetsByDimension.put(dimension, new Offsets(offsetX, offsetZ));
+        dimensionOffsets.put(dimension, new Offsets(offsetX, offsetZ));
         return new Snapshot(offsetX, offsetZ, oldX != offsetX || oldZ != offsetZ, true);
     }
 
