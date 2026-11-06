@@ -110,8 +110,10 @@ final class JavaPacketTransform {
         if (packet instanceof ClientboundPlayerPositionPacket position) {
             boolean relativeX = position.getRelatives().contains(PositionElement.X);
             boolean relativeZ = position.getRelatives().contains(PositionElement.Z);
-            origin.absolutePosition(position.getPosition().getX(), position.getPosition().getZ(),
+            JavaOriginState.Snapshot snapshot = origin.absolutePosition(
+                    position.getPosition().getX(), position.getPosition().getZ(),
                     viewDistanceChunks, !relativeX, !relativeZ);
+            if (snapshot.changed()) pendingOriginChange = snapshot;
             Vector3d p = position.getPosition();
             return position.withPosition(Vector3d.from(
                     relativeX ? p.getX() : p.getX() - origin.offsetX(),
