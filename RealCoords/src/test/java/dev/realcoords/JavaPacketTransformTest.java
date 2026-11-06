@@ -92,6 +92,53 @@ class JavaPacketTransformTest {
     }
 
     @Test
+    void optInLiveMovementShiftDropsTriggeringPacketAndPublishesNewOrigin() {
+        ShiftConfig config = new ShiftConfig();
+        config.dims.put(0, new ShiftConfig.Dim());
+        config.shiftWhileMoving = true;
+        config.cooldownMs = 0;
+        JavaPacketTransform transform = new JavaPacketTransform(config);
+        Key world = Key.key("minecraft:overworld");
+        PlayerSpawnInfo spawnInfo = new PlayerSpawnInfo(0, world, 0L, GameMode.SURVIVAL,
+                null, false, false, null, 0, 63);
+        transform.clientbound(new ClientboundLoginPacket(1, false, new Key[]{world},
+                20, 10, 10, false, true, false, spawnInfo, true, true));
+        transform.clientbound(new ClientboundPlayerPositionPacket(
+                1, 23_000_000, 70, -17_000_000, 0, 0, 0, 0, 0));
+
+        int chunkX = 23_000_000 / 16;
+        int chunkZ = -17_000_000 / 16;
+        transform.clientbound(new ClientboundLevelChunkWithLightPacket(
+                chunkX, chunkZ, new byte[]{1}, Map.of(),
+                new org.geysermc.mcprotocollib.protocol.data.game.level.block.BlockEntityInfo[0],
+                new org.geysermc.mcprotocollib.protocol.data.game.level.LightUpdateData(
+                        new BitSet(), new BitSet(), new BitSet(), new BitSet(), List.of(), List.of())));
+
+        int oldOffsetX = transform.offsetX();
+        double realX = 23_000_000;
+        boolean shifted = false;
+        for (int step = 1; step <= 1000 && !shifted; step++) {
+            realX += 60;
+            ServerboundMovePlayerPosPacket move = new ServerboundMovePlayerPosPacket(
+                    realX - transform.offsetX(), 70, -17_000_000 - transform.offsetZ(), true);
+            Packet forwarded = transform.serverbound(move);
+            JavaOriginState.Snapshot change = transform.takeOriginChange();
+            if (change != null && change.changed()) {
+                assertNull(forwarded);
+                shifted = true;
+                assertNotEquals(oldOffsetX, change.offsetX());
+                assertTrue(Math.abs(realX - change.offsetX()) < 256);
+                ClientboundPlayerPositionPacket resetPosition = transform.syntheticPlayerPosition(987654);
+                assertNotNull(resetPosition);
+                assertTrue(Math.abs(resetPosition.getPosition().getX()) < 256);
+            } else {
+                assertNotNull(forwarded);
+            }
+        }
+        assertTrue(shifted, "continuous movement should eventually request a new origin");
+    }
+
+    @Test
     void entityRelativeMovementIsFoldedIntoAbsoluteReplayPosition() {
         ShiftConfig config = new ShiftConfig();
         config.dims.put(0, new ShiftConfig.Dim());
