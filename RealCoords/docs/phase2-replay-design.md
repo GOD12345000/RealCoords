@@ -65,8 +65,8 @@ The transaction is intentionally not enabled until every stage is testable:
 
 - `JavaPacketSnapshot` uses each MCProtocolLib packet's own serializer and ByteBuf constructor for lossless snapshots; it does not stringify or manually rebuild packet fields.
 - `JavaPacketTransform` captures chunk packets before coordinate rewriting, and captures later block/section/block-entity/light updates under their real chunk coordinates.
-- The cache is currently observational only: no cached packet is injected back into Geyser yet, and no synthetic reset or continuous movement re-origin is active.
-- Overlay byte accounting includes payload bytes plus a fixed per-entry estimate; it is a bounded accounting budget, not an exact JVM heap measurement.
+- The cache is currently observational only: it warms from the beginning of the Java session (before the first origin threshold) and retains recent chunks under the configured per-player bounds. No cached packet is injected back into Geyser yet, and no synthetic reset or continuous movement re-origin is active.
+- Chunk byte accounting counts stored compressed/uncompressed payload arrays. Overlay accounting adds payload bytes plus a fixed per-entry estimate. This is a bounded accounting budget, not an exact JVM heap measurement.
 
 ## Safety gates before enabling
 
