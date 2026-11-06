@@ -8,18 +8,27 @@ import org.geysermc.mcprotocollib.protocol.data.game.level.block.BlockChangeEntr
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.ClientboundLoginPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.ClientboundRespawnPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundAddEntityPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundMoveVehiclePacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundEntityPositionSyncPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundTeleportEntityPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.player.ClientboundPlayerPositionPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundBlockUpdatePacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundBlockEntityDataPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundBlockEventPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundBlockDestructionPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundForgetLevelChunkPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundLevelChunkWithLightPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundLevelEventPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundLightUpdatePacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundSectionBlocksUpdatePacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundSetChunkCacheCenterPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.border.ClientboundSetBorderCenterPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundMovePlayerPosPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundMovePlayerPosRotPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundUseItemOnPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundPlayerActionPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.inventory.ServerboundPickItemFromBlockPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.level.ServerboundSignUpdatePacket;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -70,6 +79,11 @@ final class JavaPacketTransform {
                     relativeX ? p.getX() : p.getX() - origin.offsetX(),
                     p.getY(),
                     relativeZ ? p.getZ() : p.getZ() - origin.offsetZ()));
+        }
+        if (packet instanceof ClientboundMoveVehiclePacket vehicle) {
+            Vector3d p = vehicle.getPosition();
+            return vehicle.withPosition(Vector3d.from(p.getX() - origin.offsetX(), p.getY(),
+                    p.getZ() - origin.offsetZ()));
         }
         if (packet instanceof ClientboundAddEntityPacket entity) {
             return entity.withX(entity.getX() - origin.offsetX()).withZ(entity.getZ() - origin.offsetZ());
@@ -125,6 +139,25 @@ final class JavaPacketTransform {
             }
             return section.withChunkX(chunkX).withChunkZ(chunkZ).withEntries(entries);
         }
+        if (packet instanceof ClientboundBlockEntityDataPacket blockEntity) {
+            Vector3i p = blockEntity.getPosition();
+            return blockEntity.withPosition(Vector3i.from(p.getX() - origin.offsetX(), p.getY(),
+                    p.getZ() - origin.offsetZ()));
+        }
+        if (packet instanceof ClientboundBlockEventPacket event) {
+            Vector3i p = event.getPosition();
+            return event.withPosition(Vector3i.from(p.getX() - origin.offsetX(), p.getY(),
+                    p.getZ() - origin.offsetZ()));
+        }
+        if (packet instanceof ClientboundBlockDestructionPacket destruction) {
+            Vector3i p = destruction.getPosition();
+            return destruction.withPosition(Vector3i.from(p.getX() - origin.offsetX(), p.getY(),
+                    p.getZ() - origin.offsetZ()));
+        }
+        if (packet instanceof ClientboundSetBorderCenterPacket border) {
+            return border.withNewCenterX(border.getNewCenterX() - origin.offsetX())
+                    .withNewCenterZ(border.getNewCenterZ() - origin.offsetZ());
+        }
         if (packet instanceof ClientboundLevelEventPacket event) {
             Vector3i p = event.getPosition();
             return event.withPosition(Vector3i.from(
@@ -134,6 +167,26 @@ final class JavaPacketTransform {
     }
 
     Packet serverbound(Packet packet) {
+        if (packet instanceof ServerboundUseItemOnPacket use) {
+            Vector3i p = use.getPosition();
+            return use.withPosition(Vector3i.from(p.getX() + origin.offsetX(), p.getY(),
+                    p.getZ() + origin.offsetZ()));
+        }
+        if (packet instanceof ServerboundPlayerActionPacket action) {
+            Vector3i p = action.getPosition();
+            return action.withPosition(Vector3i.from(p.getX() + origin.offsetX(), p.getY(),
+                    p.getZ() + origin.offsetZ()));
+        }
+        if (packet instanceof ServerboundPickItemFromBlockPacket pick) {
+            Vector3i p = pick.getPos();
+            return pick.withPos(Vector3i.from(p.getX() + origin.offsetX(), p.getY(),
+                    p.getZ() + origin.offsetZ()));
+        }
+        if (packet instanceof ServerboundSignUpdatePacket sign) {
+            Vector3i p = sign.getPosition();
+            return sign.withPosition(Vector3i.from(p.getX() + origin.offsetX(), p.getY(),
+                    p.getZ() + origin.offsetZ()));
+        }
         if (packet instanceof ServerboundMovePlayerPosPacket move) {
             return move.withX(move.getX() + origin.offsetX()).withZ(move.getZ() + origin.offsetZ());
         }
