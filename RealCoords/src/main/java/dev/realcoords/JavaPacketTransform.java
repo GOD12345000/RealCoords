@@ -90,6 +90,13 @@ final class JavaPacketTransform {
     private final ShiftConfig config;
     private Key currentWorld;
     private JavaOriginState.Snapshot pendingOriginChange;
+    private GlobalPos lastDeathPosition;
+    private boolean hasLastDeathPosition;
+    private GlobalPos pendingDeathPositionUpdate;
+    private boolean deathPositionUpdatePending;
+
+    record DeathPositionUpdate(GlobalPos position) {
+    }
 
     JavaPacketTransform(ShiftConfig config) {
         this(new JavaOriginState(config), config.maxJump, config);
@@ -113,12 +120,16 @@ final class JavaPacketTransform {
         if (packet instanceof ClientboundLoginPacket login) {
             origin.login();
             currentWorld = login.getCommonPlayerSpawnInfo().getWorldName();
+            lastDeathPosition = login.getCommonPlayerSpawnInfo().getLastDeathPos();
+            hasLastDeathPosition = lastDeathPosition != null;
             origin.respawn(dimensionId(currentWorld.asString()));
             viewDistanceChunks = login.getViewDistance();
             return login.withCommonPlayerSpawnInfo(shiftSpawnInfo(login.getCommonPlayerSpawnInfo()));
         }
         if (packet instanceof ClientboundRespawnPacket respawn) {
             currentWorld = respawn.getCommonPlayerSpawnInfo().getWorldName();
+            lastDeathPosition = respawn.getCommonPlayerSpawnInfo().getLastDeathPos();
+            hasLastDeathPosition = lastDeathPosition != null;
             origin.respawn(dimensionId(currentWorld.asString()));
             return respawn.withCommonPlayerSpawnInfo(shiftSpawnInfo(respawn.getCommonPlayerSpawnInfo()));
         }
@@ -128,7 +139,13 @@ final class JavaPacketTransform {
             JavaOriginState.Snapshot snapshot = origin.absolutePosition(
                     position.getPosition().getX(), position.getPosition().getZ(),
                     viewDistanceChunks, !relativeX, !relativeZ);
-            if (snapshot.changed()) pendingOriginChange = snapshot;
+            if (snapshot.changed()) {
+                pendingOriginChange = snapshot;
+                if (hasLastDeathPosition) {
+                    pendingDeathPositionUpdate = shiftGlobalPos(lastDeathPosition);
+                    deathPositionUpdatePending = true;
+                }
+            }
             Vector3d p = position.getPosition();
             return position.withPosition(Vector3d.from(
                     relativeX ? p.getX() : p.getX() - origin.offsetX(),
@@ -406,6 +423,12 @@ final class JavaPacketTransform {
             return move.withX(realX).withZ(realZ);
         }
         return packet;
+    }
+
+    DeathPositionUpdate takeDeathPositionUpdate() {
+        if (!deathPositionUpdatePending) return null;
+        deathPositionUpdatePending = false;
+        return new DeathPositionUpdate(pendingDeathPositionUpdate);
     }
 
     JavaOriginState.Snapshot takeOriginChange() {
