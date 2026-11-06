@@ -5,6 +5,10 @@ import net.kyori.adventure.key.Key;
 import org.geysermc.mcprotocollib.protocol.data.game.entity.metadata.GlobalPos;
 import org.geysermc.mcprotocollib.protocol.data.game.entity.player.GameMode;
 import org.geysermc.mcprotocollib.protocol.data.game.entity.player.PlayerSpawnInfo;
+import org.geysermc.mcprotocollib.protocol.data.game.item.ItemStack;
+import org.geysermc.mcprotocollib.protocol.data.game.item.component.DataComponents;
+import org.geysermc.mcprotocollib.protocol.data.game.item.component.DataComponentTypes;
+import org.geysermc.mcprotocollib.protocol.data.game.item.component.LodestoneTracker;
 import org.cloudburstmc.math.vector.Vector3i;
 import org.cloudburstmc.nbt.NbtMap;
 import org.geysermc.mcprotocollib.network.packet.Packet;
@@ -27,6 +31,7 @@ import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.Clie
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundLevelChunkWithLightPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundBlockUpdatePacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundSetDefaultSpawnPositionPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.inventory.ClientboundSetCursorItemPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundUseItemOnPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundGameEventPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundTrackedWaypointPacket;
@@ -213,6 +218,31 @@ class JavaPacketTransformTest {
         assertEquals(Vector3i.from(23_000_000 - transform.offsetX(), 64,
                         -17_000_000 - transform.offsetZ()),
                 shifted.getGlobalPos().getPosition());
+    }
+
+    @Test
+    void lodestoneCompassTargetIsShiftedInsideItemComponents() {
+        JavaPacketTransform transform = transformer();
+        Key world = Key.key("minecraft:overworld");
+        PlayerSpawnInfo spawnInfo = new PlayerSpawnInfo(0, world, 0L, GameMode.SURVIVAL,
+                null, false, false, null, 0, 63);
+        transform.clientbound(new ClientboundLoginPacket(1, false, new Key[]{world},
+                20, 10, 10, false, true, false, spawnInfo, true, true));
+        transform.clientbound(new ClientboundPlayerPositionPacket(
+                1, 23_000_000, 70, -17_000_000, 0, 0, 0, 0, 0));
+
+        GlobalPos realTarget = new GlobalPos(world, Vector3i.from(23_000_100, 64, -16_999_900));
+        DataComponents components = new DataComponents(new java.util.HashMap<>());
+        components.put(DataComponentTypes.LODESTONE_TRACKER, new LodestoneTracker(realTarget, true));
+        ItemStack item = new ItemStack(1, 1, components);
+        ClientboundSetCursorItemPacket packet = new ClientboundSetCursorItemPacket(item);
+
+        ClientboundSetCursorItemPacket shifted =
+                (ClientboundSetCursorItemPacket) transform.clientbound(packet);
+        LodestoneTracker tracker = shifted.getContents().getDataComponentsPatch()
+                .get(DataComponentTypes.LODESTONE_TRACKER);
+        assertEquals(Vector3i.from(realTarget.getPosition().getX() - transform.offsetX(), 64,
+                realTarget.getPosition().getZ() - transform.offsetZ()), tracker.getPos().getPosition());
     }
 
     @Test
