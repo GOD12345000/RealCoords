@@ -383,6 +383,14 @@ final class JavaSessionHook {
                 if (log != null) log.info("[RealCoords] Java hook first clientbound packet: " + packet.getClass().getName());
             }
             if (message instanceof Packet packet) {
+                if ((syntheticResetGate.active() || activeReplayPlan != null) && isWorldResetPacket(packet)) {
+                    if (log != null) log.warning("[RealCoords] unexpected backend login/respawn during live re-origin; closing downstream session");
+                    if (activeReplayPlan != null) activeReplayPlan.abort();
+                    activeReplayPlan = null;
+                    cancelReplayTasks();
+                    ctx.close();
+                    return;
+                }
                 if (activeReplayPlan != null && isReplaySensitive(packet)) {
                     if (packet instanceof MinecraftPacket minecraftPacket
                             && activeReplayPlan.bufferLiveUpdate(minecraftPacket)) {
@@ -527,6 +535,11 @@ final class JavaSessionHook {
             String name = packet.getClass().getSimpleName();
             return name.startsWith("ServerboundMovePlayer")
                     || name.equals("ServerboundMoveVehiclePacket");
+        }
+
+        private static boolean isWorldResetPacket(Packet packet) {
+            String name = packet.getClass().getSimpleName();
+            return name.equals("ClientboundLoginPacket") || name.equals("ClientboundRespawnPacket");
         }
 
         private static boolean isReplaySensitive(Packet packet) {
