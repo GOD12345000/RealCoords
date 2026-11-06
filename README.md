@@ -118,7 +118,9 @@ geyser extensions
 確認清單中出現 RealCoords。Bedrock 玩家連線後，若封包管線掛載成功，應看到：
 
 ~~~text
-[RealCoords] hook active: <玩家名稱>
+[RealCoords] Java coordinate transform installed; pipeline=[...]
+[RealCoords] Java hook first clientbound packet: ...
+[RealCoords] Java hook first serverbound packet: ...
 ~~~
 
 第一次啟動後，設定檔會由 Extension 產生在 Geyser extensions 的資料目錄中，通常為：
@@ -260,13 +262,10 @@ Push 到 main、提交 Pull Request，或手動執行 **Actions → Build RealCo
 - [x] Java 模式已接上 Java protocol transformer 與 Bedrock 輔助 ActionBar hook。
 - [x] 單元測試涵蓋初始原點、相對位置旗標、玩家移動往返、區塊座標與異常移動安全閘。
 
-### 尚待實機驗證
+### 實機驗收清單
 
 - [ ] Velocity + Geyser 2.12.1 實際登入時，確認 Java hook 在第一個遊戲封包前安裝且首包日誌出現。
 - [ ] Java 模式遠距登入／傳送後，確認 Geyser 內部與 Bedrock 客戶端座標維持小數值，Java 後端仍看到真實座標。
-
-### 尚待實機驗證
-
 - [ ] 遠距離觸發偏移後，Bedrock 與 Java 端座標一致。
 - [ ] 重設距離、冷卻時間與客戶端確認流程正常。
 - [ ] 偏移後區塊完整載入，沒有空洞、錯位或持續閃爍。
@@ -281,7 +280,7 @@ Push 到 main、提交 Pull Request，或手動執行 **Actions → Build RealCo
 
 ### 已知限制／風險
 
-1. **未完整轉換的封包**：目前程式碼會監看但尚未完整處理部分含座標資料的封包，包括 UpdateSubChunkBlocksPacket、SubChunkPacket、LevelEventGenericPacket、MapItemDataPacket、PositionTrackingDBServerBroadcastPacket、AddPaintingPacket。相關功能可能出現位置錯誤。
+1. **未完整轉換的封包**：Java 模式仍有未涵蓋的絕對座標封包與 metadata／地圖定位資料；login／respawn 的 `lastDeathPos` 也尚未處理。命令方塊、結構方塊與拼圖方塊位置已加入轉換，但仍需實機核對。
 2. **Java 模式封包覆蓋仍不完整**：Java 層目前只改寫已明確支援的封包。尚未處理的絕對座標封包、實體 metadata 內的 BlockPos、地圖／定位資料與部分管理方塊封包，可能在偏移狀態下錯位。遇到這些功能前應先在測試世界驗證。
 3. **實體朝向**：部分實體重新送出時，朝向可能暫時歸零，直到收到下一次移動更新。
 4. **載具**：騎乘載具時發生原點切換，可能短暫抖動。
