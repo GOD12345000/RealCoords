@@ -37,7 +37,7 @@ class JavaSessionHookTest {
         assertFalse(channel.writeOutbound(syntheticAck));
         assertNull(channel.readOutbound());
         // The second respawn acknowledgement is also synthetic; the gate stays active.
-        assertTrue(handler.beginSyntheticReset(987655) == false);
+        assertFalse(handler.beginSyntheticReset(987655));
         assertFalse(channel.writeOutbound(ServerboundPlayerLoadedPacket.INSTANCE));
         assertNull(channel.readOutbound());
 
@@ -79,7 +79,9 @@ class JavaSessionHookTest {
         assertFalse(channel.writeOutbound(ServerboundPlayerLoadedPacket.INSTANCE));
         assertFalse(channel.writeOutbound(new ServerboundAcceptTeleportationPacket(
                 777777, 0, 70, 0, 0, 0)));
-        assertFalse(handler.beginSyntheticReset(777778));
+        assertTrue(handler.beginSyntheticReset(777778));
+        handler.abortSyntheticReset();
+        assertFalse(channel.isOpen());
         channel.finishAndReleaseAll();
     }
 
