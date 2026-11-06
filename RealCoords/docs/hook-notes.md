@@ -113,3 +113,11 @@ Java hook 安裝後應輸出：
 - 玩家 serverbound 位置在加回偏移後會套用 `safety.max-serverbound-jump`，不合理的玩家移動封包會被丟棄。
 - Java 模式尚未涵蓋所有世界座標封包。login／respawn 的 `lastDeathPos` 會在後續玩家位置決定原點後更新 Geyser 內部 metadata；若死亡標記與玩家位置相距過遠，仍會保留一次性警告，因單一原點無法同時讓兩個遠距位置都接近 0。
 - CI 與單元測試不等同實機驗證；首包安裝時序、遊戲內封包覆蓋與行為仍待測試世界確認。
+
+## 8. Geyser Java translator audit
+
+- `JavaMapItemDataTranslator` uses map-local icon coordinates; these are not world X/Z and must not receive the floating-origin offset. `MapItemDataPacket` is therefore excluded from the Bedrock output WATCH list.
+- `JavaMoveEntityPosTranslator` and `JavaMoveEntityPosRotTranslator` consume relative deltas; these are intentionally not shifted. `JavaAnimateTranslator` and `JavaSetPassengersTranslator` do not introduce independent absolute world positions.
+- `JavaRespawnTranslator` and `JavaLoginTranslator` consume `lastDeathPos`. The original `GlobalPos` is retained until the first complete player position establishes the active origin; the hook then updates `SessionPlayerEntity` metadata on Geyser's tick event loop. If the death marker is still far from the active origin, a once-per-session warning is emitted.
+- `JavaExplodeTranslator` uses the explosion center and particle data; both are transformed before translation. The player knockback vector is velocity and is intentionally unchanged.
+- The remaining Bedrock output WATCH classes are `UpdateSubChunkBlocksPacket`, `SubChunkPacket`, `LevelEventGenericPacket`, `PositionTrackingDBServerBroadcastPacket`, and `AddPaintingPacket`; each is warned once per session for real-server verification.
