@@ -92,6 +92,7 @@ final class JavaPacketTransform {
     private final ChunkReplayCache chunkReplayCache;
     private boolean replayingCachedPackets;
     private Key currentWorld;
+    private PlayerSpawnInfo currentSpawnInfo;
     private JavaOriginState.Snapshot pendingOriginChange;
     private GlobalPos lastDeathPosition;
     private boolean hasLastDeathPosition;
@@ -127,7 +128,8 @@ final class JavaPacketTransform {
         if (packet instanceof ClientboundLoginPacket login) {
             if (chunkReplayCache != null) chunkReplayCache.clear();
             origin.login();
-            currentWorld = login.getCommonPlayerSpawnInfo().getWorldName();
+            currentSpawnInfo = login.getCommonPlayerSpawnInfo();
+            currentWorld = currentSpawnInfo.getWorldName();
             lastDeathPosition = login.getCommonPlayerSpawnInfo().getLastDeathPos();
             hasLastDeathPosition = lastDeathPosition != null;
             origin.respawn(dimensionId(currentWorld.asString()));
@@ -136,7 +138,8 @@ final class JavaPacketTransform {
         }
         if (packet instanceof ClientboundRespawnPacket respawn) {
             if (chunkReplayCache != null) chunkReplayCache.clear();
-            currentWorld = respawn.getCommonPlayerSpawnInfo().getWorldName();
+            currentSpawnInfo = respawn.getCommonPlayerSpawnInfo();
+            currentWorld = currentSpawnInfo.getWorldName();
             lastDeathPosition = respawn.getCommonPlayerSpawnInfo().getLastDeathPos();
             hasLastDeathPosition = lastDeathPosition != null;
             origin.respawn(dimensionId(currentWorld.asString()));
@@ -462,6 +465,29 @@ final class JavaPacketTransform {
 
     int syntheticAckTimeoutMillis() {
         return config == null ? 3000 : Math.max(250, config.ackTimeoutMs);
+    }
+
+    /**
+     * Creates the two respawns needed to force Geyser to clear same-dimension
+     * world caches: one temporary world name, then the original world name.
+     * These packets must be injected directly into the inbound pipeline, bypassing
+     * this transform so the real-world identity and cache remain untouched.
+     */
+    List<Packet> syntheticResetRespawns() {
+        if (currentSpawnInfo == null || currentWorld == null) return List.of();
+        Key temporaryWorld = Key.key(currentWorld.namespace(), currentWorld.value() + "_realcoords_reset");
+        PlayerSpawnInfo localSpawn = new PlayerSpawnInfo(currentSpawnInfo.getDimension(), currentWorld,
+                currentSpawnInfo.getHashedSeed(), currentSpawnInfo.getGameMode(),
+                currentSpawnInfo.getPreviousGamemode(), currentSpawnInfo.isDebug(), currentSpawnInfo.isFlat(),
+                shiftGlobalPos(currentSpawnInfo.getLastDeathPos()), currentSpawnInfo.getPortalCooldown(),
+                currentSpawnInfo.getSeaLevel());
+        PlayerSpawnInfo temporarySpawn = new PlayerSpawnInfo(localSpawn.getDimension(), temporaryWorld,
+                localSpawn.getHashedSeed(), localSpawn.getGameMode(), localSpawn.getPreviousGamemode(),
+                localSpawn.isDebug(), localSpawn.isFlat(), localSpawn.getLastDeathPos(),
+                localSpawn.getPortalCooldown(), localSpawn.getSeaLevel());
+        return List.of(
+                new ClientboundRespawnPacket(temporarySpawn, true, true),
+                new ClientboundRespawnPacket(localSpawn, true, true));
     }
 
     int cachedChunkCount() {
