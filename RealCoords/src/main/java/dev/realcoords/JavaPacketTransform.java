@@ -126,6 +126,7 @@ final class JavaPacketTransform {
                     relativeZ ? p.getZ() : p.getZ() - origin.offsetZ()));
         }
         if (packet instanceof ClientboundPlayerLookAtPacket lookAt) {
+            if (lookAt.getTargetEntityOrigin() != null) return packet;
             return lookAt.withX(lookAt.getX() - origin.offsetX()).withZ(lookAt.getZ() - origin.offsetZ());
         }
         if (packet instanceof ClientboundMoveVehiclePacket vehicle) {
@@ -355,6 +356,14 @@ final class JavaPacketTransform {
                         position.getZ() - origin.offsetZ());
             } else if (value instanceof GlobalPos globalPos) {
                 replacement = shiftGlobalPos(globalPos);
+            } else if (value instanceof java.util.Optional<?> optional && optional.isPresent()) {
+                Object nested = optional.get();
+                if (nested instanceof Vector3i position) {
+                    replacement = java.util.Optional.of(Vector3i.from(position.getX() - origin.offsetX(),
+                            position.getY(), position.getZ() - origin.offsetZ()));
+                } else if (nested instanceof GlobalPos globalPos) {
+                    replacement = java.util.Optional.of(shiftGlobalPos(globalPos));
+                }
             }
             if (replacement != value) {
                 shifted[i] = new ObjectEntityMetadata(entry.getId(), (MetadataType) entry.getType(), replacement);
