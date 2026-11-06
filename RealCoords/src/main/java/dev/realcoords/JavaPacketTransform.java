@@ -464,7 +464,9 @@ final class JavaPacketTransform {
     }
 
     private boolean cacheActive() {
-        return chunkReplayCache != null && (origin.offsetX() != 0 || origin.offsetZ() != 0);
+        // Capture before the first re-origin threshold is crossed; the bounded LRU
+        // retains the most recently streamed world area for a later replay.
+        return chunkReplayCache != null;
     }
 
     private void cacheChunk(ClientboundLevelChunkWithLightPacket chunk) {
