@@ -69,7 +69,7 @@ final class JavaOriginState {
         if (resetPending || !hasPosition) {
             if (absoluteX) offsetX = candidateOffset(nextX, offsetX);
             if (absoluteZ) offsetZ = candidateOffset(nextZ, offsetZ);
-            resetPending = false;
+            if (absoluteX && absoluteZ) resetPending = false;
         } else if (absoluteX && absoluteZ) {
             double viewDistance = Math.max(0, viewDistanceChunks) * 16.0;
             if (Math.hypot(nextX - lastX, nextZ - lastZ) > viewDistance) {
