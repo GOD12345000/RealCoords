@@ -431,33 +431,37 @@ final class JavaSessionHook {
                 ctx.executor().execute(() -> startAutomaticReplay(ctx));
                 return;
             }
-            if (geyserSession != null && !geyserSession.isSpawned()) {
-                long now = System.currentTimeMillis();
-                if (bedrockSpawnWaitDeadlineMs == 0) {
-                    bedrockSpawnWaitDeadlineMs = now + transform.syntheticAckTimeoutMillis() * 2L;
+            try {
+                ReoriginReplayPlan plan = activeReplayPlan;
+                if (plan == null) {
+                    double realX = transform.realX();
+                    double realZ = transform.realZ();
+                    int chunkX = (int) Math.floor(realX / 16.0);
+                    int chunkZ = (int) Math.floor(realZ / 16.0);
+                    plan = prepareReplayPlan(chunkX, chunkZ, realX, realZ,
+                            transform.entityReplayRadius());
+                    syntheticResetPendingReplay = false;
+                    ReoriginReplayPlan scheduledPlan = plan;
+                    replayTimeout = ctx.executor().schedule(() -> {
+                        if (activeReplayPlan == scheduledPlan) {
+                            if (log != null) log.warning("[RealCoords] replay transaction timed out; closing downstream session");
+                            failReplay(ctx, scheduledPlan, new IllegalStateException("replay transaction timeout"));
+                        }
+                    }, transform.replayTimeoutMillis(plan.chunkCount(), plan.entityPacketCount()), TimeUnit.MILLISECONDS);
                 }
-                if (now >= bedrockSpawnWaitDeadlineMs) {
-                    if (log != null) log.warning("[RealCoords] Geyser did not finish the Bedrock dimension transition; closing downstream session");
-                    ctx.close();
+                if (geyserSession != null && !geyserSession.isSpawned()) {
+                    long now = System.currentTimeMillis();
+                    if (bedrockSpawnWaitDeadlineMs == 0) {
+                        bedrockSpawnWaitDeadlineMs = now + transform.syntheticAckTimeoutMillis() * 2L;
+                    }
+                    if (now >= bedrockSpawnWaitDeadlineMs) {
+                        failReplay(ctx, plan, new IllegalStateException("Geyser Bedrock dimension transition did not complete"));
+                        return;
+                    }
+                    replayBatchTask = ctx.executor().schedule(() -> startAutomaticReplay(ctx), 50, TimeUnit.MILLISECONDS);
                     return;
                 }
-                replayBatchTask = ctx.executor().schedule(() -> startAutomaticReplay(ctx), 50, TimeUnit.MILLISECONDS);
-                return;
-            }
-            bedrockSpawnWaitDeadlineMs = 0;
-            try {
-                double realX = transform.realX();
-                double realZ = transform.realZ();
-                int chunkX = (int) Math.floor(realX / 16.0);
-                int chunkZ = (int) Math.floor(realZ / 16.0);
-                ReoriginReplayPlan plan = prepareReplayPlan(chunkX, chunkZ, realX, realZ,
-                        transform.entityReplayRadius());
-                replayTimeout = ctx.executor().schedule(() -> {
-                    if (activeReplayPlan == plan) {
-                        if (log != null) log.warning("[RealCoords] replay transaction timed out; closing downstream session");
-                        failReplay(ctx, plan, new IllegalStateException("replay transaction timeout"));
-                    }
-                }, transform.replayTimeoutMillis(plan.chunkCount(), plan.entityPacketCount()), TimeUnit.MILLISECONDS);
+                bedrockSpawnWaitDeadlineMs = 0;
                 scheduleReplayBatch(ctx, plan);
             } catch (RuntimeException exception) {
                 if (log != null) log.error("[RealCoords] unable to start replay transaction; closing downstream session", exception);
@@ -544,14 +548,14 @@ final class JavaSessionHook {
                     if (!syntheticResetGate.active()) {
                         cancelSyntheticResetTimeout();
                         if (syntheticResetPendingReplay) {
-                            syntheticResetPendingReplay = false;
                             startAutomaticReplay(ctx);
                         }
                     }
                     promise.setSuccess();
                     return;
                 }
-                if ((syntheticResetGate.active() || activeReplayPlan != null) && isMovementPacket(packet)) {
+                if ((syntheticResetGate.active() || syntheticResetPendingReplay || activeReplayPlan != null)
+                        && isMovementPacket(packet)) {
                     promise.setSuccess();
                     return;
                 }
