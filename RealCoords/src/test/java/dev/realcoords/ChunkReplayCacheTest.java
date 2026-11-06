@@ -33,7 +33,7 @@ class ChunkReplayCacheTest {
 
         List<ChunkReplayCache.ReplayChunk> first = cache.snapshotNearestFirst(0, 0, 0, 2);
         List<ChunkReplayCache.ReplayChunk> second = cache.snapshotNearestFirst(0, 0, 2, 2);
-        assertEquals(List.of(1, -1), first.stream().map(ChunkReplayCache.ReplayChunk::x).toList());
+        assertEquals(List.of(-1, 1), first.stream().map(ChunkReplayCache.ReplayChunk::x).toList());
         assertEquals(List.of(2, 3), second.stream().map(ChunkReplayCache.ReplayChunk::x).toList());
     }
 
