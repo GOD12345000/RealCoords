@@ -27,7 +27,7 @@ class EntityReplayCacheTest {
 
         assertTrue(cache.put(10, EntityReplayCache.Kind.SPAWN, 0,
                 ClientboundAddEntityPacket.class, JavaPacketSnapshot.serialize(spawn)));
-        cache.updatePosition(10, spawn.getX(), spawn.getZ());
+        cache.updatePosition(10, spawn.getX(), spawn.getY(), spawn.getZ(), spawn.getYaw(), spawn.getPitch(), false);
         assertTrue(cache.put(10, EntityReplayCache.Kind.METADATA, 0,
                 ClientboundSetEntityDataPacket.class, JavaPacketSnapshot.serialize(metadata)));
         assertTrue(cache.put(10, EntityReplayCache.Kind.EFFECT, Effect.SPEED.ordinal(),
@@ -48,7 +48,7 @@ class EntityReplayCacheTest {
         byte[] payload = new byte[48];
         assertTrue(cache.put(1, EntityReplayCache.Kind.SPAWN,
                 0, ClientboundAddEntityPacket.class, payload));
-        cache.updatePosition(1, 0, 0);
+        cache.updatePosition(1, 0, 0, 0, 0, 0, false);
         assertTrue(cache.put(1, EntityReplayCache.Kind.METADATA,
                 0, ClientboundSetEntityDataPacket.class, new byte[24]));
         long before = cache.storedBytes();
