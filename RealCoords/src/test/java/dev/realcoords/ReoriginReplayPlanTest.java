@@ -55,7 +55,7 @@ class ReoriginReplayPlanTest {
     void rejectsOutOfOrderAndInvalidBatchRequests() {
         ReoriginReplayPlan plan = new ReoriginReplayPlan(List.of(), List.of(), List.of());
         assertThrows(IllegalArgumentException.class, () -> plan.nextChunkBatch(0));
-        assertThrows(IllegalStateException.class, plan::nextEntityBatch);
+        assertThrows(IllegalStateException.class, () -> plan.nextEntityBatch(1));
         plan.nextChunkBatch(1);
         plan.nextEntityBatch(1);
         plan.finishGlobalState();
