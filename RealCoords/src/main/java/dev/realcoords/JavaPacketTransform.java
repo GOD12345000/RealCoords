@@ -56,14 +56,20 @@ import java.util.List;
 final class JavaPacketTransform {
     private final JavaOriginState origin;
     private int viewDistanceChunks = 10;
+    private final double maxServerboundJump;
     private Key currentWorld;
 
     JavaPacketTransform(ShiftConfig config) {
-        this(new JavaOriginState(config));
+        this(new JavaOriginState(config), config.maxJump);
     }
 
     JavaPacketTransform(JavaOriginState origin) {
+        this(origin, 64.0);
+    }
+
+    JavaPacketTransform(JavaOriginState origin, double maxServerboundJump) {
         this.origin = origin;
+        this.maxServerboundJump = maxServerboundJump;
     }
 
     Packet clientbound(Packet packet) {
@@ -250,7 +256,7 @@ final class JavaPacketTransform {
         if (packet instanceof ServerboundMovePlayerPosPacket move) {
             double realX = move.getX() + origin.offsetX();
             double realZ = move.getZ() + origin.offsetZ();
-            if (!origin.acceptServerboundPosition(realX, realZ, 64.0)) return null;
+            if (!origin.acceptServerboundPosition(realX, realZ, maxServerboundJump)) return null;
             return move.withX(realX).withZ(realZ);
         }
         if (packet instanceof ServerboundMovePlayerPosRotPacket move) {
