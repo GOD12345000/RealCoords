@@ -70,7 +70,7 @@ class EntityReplayCacheTest {
         EntityReplayCache cache = new EntityReplayCache(8, 4096);
         byte[] payload = {1, 2, 3};
         cache.put(1, EntityReplayCache.Kind.SPAWN, 0, ClientboundAddEntityPacket.class, payload);
-        cache.updatePosition(1, 0, 0);
+        cache.updatePosition(1, 0, 0, 0, 0, 0, false);
         cache.put(1, EntityReplayCache.Kind.EFFECT, Effect.SPEED.ordinal(),
                 ClientboundUpdateMobEffectPacket.class, payload);
         cache.removeEffect(1, Effect.SPEED.ordinal());
