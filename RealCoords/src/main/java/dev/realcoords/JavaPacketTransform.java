@@ -9,10 +9,16 @@ import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.Clientbound
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.ClientboundRespawnPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundAddEntityPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundMoveVehiclePacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.player.ClientboundPlayerLookAtPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundEntityPositionSyncPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundTeleportEntityPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.player.ClientboundPlayerPositionPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundBlockUpdatePacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundChunksBiomesPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundLevelParticlesPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundSoundPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundExplodePacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundOpenSignEditorPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundBlockEntityDataPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundBlockEventPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundBlockDestructionPacket;
@@ -23,8 +29,11 @@ import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.Clien
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundSectionBlocksUpdatePacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundSetChunkCacheCenterPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.border.ClientboundSetBorderCenterPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.border.ClientboundInitializeBorderPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundMovePlayerPosPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundMovePlayerPosRotPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.level.ServerboundMoveVehiclePacket;
+import org.geysermc.mcprotocollib.protocol.data.game.chunk.ChunkBiomeData;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundUseItemOnPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundPlayerActionPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.inventory.ServerboundPickItemFromBlockPacket;
@@ -79,6 +88,9 @@ final class JavaPacketTransform {
                     relativeX ? p.getX() : p.getX() - origin.offsetX(),
                     p.getY(),
                     relativeZ ? p.getZ() : p.getZ() - origin.offsetZ()));
+        }
+        if (packet instanceof ClientboundPlayerLookAtPacket lookAt) {
+            return lookAt.withX(lookAt.getX() - origin.offsetX()).withZ(lookAt.getZ() - origin.offsetZ());
         }
         if (packet instanceof ClientboundMoveVehiclePacket vehicle) {
             Vector3d p = vehicle.getPosition();
@@ -139,6 +151,31 @@ final class JavaPacketTransform {
             }
             return section.withChunkX(chunkX).withChunkZ(chunkZ).withEntries(entries);
         }
+        if (packet instanceof ClientboundChunksBiomesPacket biomes) {
+            List<ChunkBiomeData> shifted = new ArrayList<>();
+            for (ChunkBiomeData entry : biomes.getChunkBiomeData()) {
+                shifted.add(new ChunkBiomeData(entry.getX() - origin.offsetX() / 16,
+                        entry.getZ() - origin.offsetZ() / 16, entry.getBuffer()));
+            }
+            return new ClientboundChunksBiomesPacket(shifted);
+        }
+        if (packet instanceof ClientboundLevelParticlesPacket particles) {
+            return particles.withX(particles.getX() - origin.offsetX())
+                    .withZ(particles.getZ() - origin.offsetZ());
+        }
+        if (packet instanceof ClientboundSoundPacket sound) {
+            return sound.withX(sound.getX() - origin.offsetX()).withZ(sound.getZ() - origin.offsetZ());
+        }
+        if (packet instanceof ClientboundExplodePacket explosion) {
+            Vector3d p = explosion.getCenter();
+            return explosion.withCenter(Vector3d.from(p.getX() - origin.offsetX(), p.getY(),
+                    p.getZ() - origin.offsetZ()));
+        }
+        if (packet instanceof ClientboundOpenSignEditorPacket sign) {
+            Vector3i p = sign.getPosition();
+            return sign.withPosition(Vector3i.from(p.getX() - origin.offsetX(), p.getY(),
+                    p.getZ() - origin.offsetZ()));
+        }
         if (packet instanceof ClientboundBlockEntityDataPacket blockEntity) {
             Vector3i p = blockEntity.getPosition();
             return blockEntity.withPosition(Vector3i.from(p.getX() - origin.offsetX(), p.getY(),
@@ -153,6 +190,10 @@ final class JavaPacketTransform {
             Vector3i p = destruction.getPosition();
             return destruction.withPosition(Vector3i.from(p.getX() - origin.offsetX(), p.getY(),
                     p.getZ() - origin.offsetZ()));
+        }
+        if (packet instanceof ClientboundInitializeBorderPacket border) {
+            return border.withNewCenterX(border.getNewCenterX() - origin.offsetX())
+                    .withNewCenterZ(border.getNewCenterZ() - origin.offsetZ());
         }
         if (packet instanceof ClientboundSetBorderCenterPacket border) {
             return border.withNewCenterX(border.getNewCenterX() - origin.offsetX())
@@ -185,6 +226,11 @@ final class JavaPacketTransform {
         if (packet instanceof ServerboundSignUpdatePacket sign) {
             Vector3i p = sign.getPosition();
             return sign.withPosition(Vector3i.from(p.getX() + origin.offsetX(), p.getY(),
+                    p.getZ() + origin.offsetZ()));
+        }
+        if (packet instanceof ServerboundMoveVehiclePacket move) {
+            Vector3d p = move.getPosition();
+            return move.withPosition(Vector3d.from(p.getX() + origin.offsetX(), p.getY(),
                     p.getZ() + origin.offsetZ()));
         }
         if (packet instanceof ServerboundMovePlayerPosPacket move) {
