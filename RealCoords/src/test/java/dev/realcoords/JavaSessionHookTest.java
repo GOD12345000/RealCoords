@@ -19,6 +19,7 @@ class JavaSessionHookTest {
         assertTrue(handler.beginSyntheticReset(987654));
         assertFalse(channel.writeOutbound(ServerboundPlayerLoadedPacket.INSTANCE));
         assertNull(channel.readOutbound());
+        assertTrue(handler.beginSyntheticReset(987655) == false); // overlapping reset is rejected
 
         ServerboundAcceptTeleportationPacket ordinaryAck =
                 new ServerboundAcceptTeleportationPacket(987653, 0, 64, 0, 0, 0);
@@ -28,6 +29,14 @@ class JavaSessionHookTest {
         ServerboundAcceptTeleportationPacket syntheticAck =
                 new ServerboundAcceptTeleportationPacket(987654, 0, 64, 0, 0, 0);
         assertFalse(channel.writeOutbound(syntheticAck));
+        assertNull(channel.readOutbound());
+        assertTrue(handler.beginSyntheticReset(987655));
+        assertFalse(channel.writeOutbound(ServerboundPlayerLoadedPacket.INSTANCE));
+        assertTrue(handler.beginSyntheticReset(987656) == false);
+        assertFalse(channel.writeOutbound(ServerboundPlayerLoadedPacket.INSTANCE));
+        ServerboundAcceptTeleportationPacket secondSyntheticAck =
+                new ServerboundAcceptTeleportationPacket(987655, 0, 64, 0, 0, 0);
+        assertFalse(channel.writeOutbound(secondSyntheticAck));
         assertNull(channel.readOutbound());
 
         // Once both synthetic responses have been consumed, normal packets pass.
