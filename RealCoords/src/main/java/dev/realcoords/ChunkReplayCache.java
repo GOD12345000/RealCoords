@@ -15,7 +15,7 @@ import java.util.zip.InflaterInputStream;
 
 /** Bounded per-session cache for serialized Java chunk packets and later world-state overlays. */
 final class ChunkReplayCache {
-    enum OverlayType { BLOCK_UPDATE, BLOCK_ENTITY, LIGHT_UPDATE }
+    enum OverlayType { BLOCK_UPDATE, BLOCK_ENTITY, LIGHT_UPDATE, CHUNK_BIOMES }
 
     record ChunkPos(int x, int z) { }
     record BlockPos(int x, int y, int z) { }
