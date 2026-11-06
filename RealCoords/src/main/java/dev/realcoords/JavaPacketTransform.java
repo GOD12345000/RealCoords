@@ -11,6 +11,9 @@ import org.geysermc.mcprotocollib.protocol.data.game.entity.metadata.type.Object
 import org.geysermc.mcprotocollib.protocol.data.game.entity.metadata.GlobalPos;
 import net.kyori.adventure.key.Key;
 import org.geysermc.mcprotocollib.protocol.data.game.level.block.BlockChangeEntry;
+import org.geysermc.mcprotocollib.protocol.data.game.level.waypoint.ChunkWaypointData;
+import org.geysermc.mcprotocollib.protocol.data.game.level.waypoint.TrackedWaypoint;
+import org.geysermc.mcprotocollib.protocol.data.game.level.waypoint.Vec3iWaypointData;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.ClientboundLoginPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.ClientboundRespawnPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundAddEntityPacket;
@@ -22,6 +25,7 @@ import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.Clie
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.player.ClientboundPlayerPositionPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundBlockUpdatePacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundChunksBiomesPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundTrackedWaypointPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundLevelParticlesPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundSoundPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundExplodePacket;
@@ -183,6 +187,22 @@ final class JavaPacketTransform {
                         entry.getBlock());
             }
             return section.withChunkX(chunkX).withChunkZ(chunkZ).withEntries(entries);
+        }
+        if (packet instanceof ClientboundTrackedWaypointPacket tracked) {
+            TrackedWaypoint waypoint = tracked.getWaypoint();
+            if (waypoint.data() instanceof Vec3iWaypointData point) {
+                Vector3i p = point.vector();
+                TrackedWaypoint shifted = new TrackedWaypoint(waypoint.uuid(), waypoint.id(), waypoint.icon(),
+                        waypoint.type(), new Vec3iWaypointData(Vector3i.from(
+                        p.getX() - origin.offsetX(), p.getY(), p.getZ() - origin.offsetZ())));
+                return tracked.withWaypoint(shifted);
+            }
+            if (waypoint.data() instanceof ChunkWaypointData chunk) {
+                TrackedWaypoint shifted = new TrackedWaypoint(waypoint.uuid(), waypoint.id(), waypoint.icon(),
+                        waypoint.type(), new ChunkWaypointData(
+                        chunk.chunkX() - origin.offsetX() / 16, chunk.chunkZ() - origin.offsetZ() / 16));
+                return tracked.withWaypoint(shifted);
+            }
         }
         if (packet instanceof ClientboundChunksBiomesPacket biomes) {
             List<ChunkBiomeData> shifted = new ArrayList<>();
