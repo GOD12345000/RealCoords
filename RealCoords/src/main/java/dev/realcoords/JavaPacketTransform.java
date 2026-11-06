@@ -94,6 +94,8 @@ final class JavaPacketTransform {
     private boolean hasLastDeathPosition;
     private GlobalPos pendingDeathPositionUpdate;
     private boolean deathPositionUpdatePending;
+    private boolean deathPositionWarningIssued;
+    private boolean pendingDeathPositionWarning;
 
     record DeathPositionUpdate(GlobalPos position) {
     }
@@ -139,11 +141,18 @@ final class JavaPacketTransform {
             JavaOriginState.Snapshot snapshot = origin.absolutePosition(
                     position.getPosition().getX(), position.getPosition().getZ(),
                     viewDistanceChunks, !relativeX, !relativeZ);
-            if (snapshot.changed()) {
-                pendingOriginChange = snapshot;
-                if (hasLastDeathPosition) {
-                    pendingDeathPositionUpdate = shiftGlobalPos(lastDeathPosition);
-                    deathPositionUpdatePending = true;
+            if (snapshot.changed()) pendingOriginChange = snapshot;
+            if (snapshot.initialized() && hasLastDeathPosition) {
+                pendingDeathPositionUpdate = shiftGlobalPos(lastDeathPosition);
+                deathPositionUpdatePending = true;
+                if (!deathPositionWarningIssued && lastDeathPosition != null
+                        && currentWorld != null && currentWorld.equals(lastDeathPosition.getDimension())) {
+                    Vector3i death = pendingDeathPositionUpdate.getPosition();
+                    ShiftConfig.Dim dim = config.dim(dimensionId(currentWorld.asString()));
+                    if (Math.abs(death.getX()) > dim.trigger || Math.abs(death.getZ()) > dim.trigger) {
+                        pendingDeathPositionWarning = true;
+                        deathPositionWarningIssued = true;
+                    }
                 }
             }
             Vector3d p = position.getPosition();
@@ -425,6 +434,12 @@ final class JavaPacketTransform {
         return packet;
     }
 
+    boolean takeDeathPositionWarning() {
+        boolean warning = pendingDeathPositionWarning;
+        pendingDeathPositionWarning = false;
+        return warning;
+    }
+
     DeathPositionUpdate takeDeathPositionUpdate() {
         if (!deathPositionUpdatePending) return null;
         deathPositionUpdatePending = false;
@@ -512,9 +527,9 @@ final class JavaPacketTransform {
     }
 
     private PlayerSpawnInfo shiftSpawnInfo(PlayerSpawnInfo info) {
-        // The new origin is selected only after the following absolute player-position
-        // packet. Do not apply the previous origin to lastDeathPos during login/respawn.
-        // This field remains a documented limitation until it can be deferred safely.
+        // The origin is selected by the following player-position packet. Keep the
+        // original GlobalPos here; the hook refreshes Geyser's stored metadata after
+        // the new origin has been selected.
         return new PlayerSpawnInfo(info.getDimension(), info.getWorldName(), info.getHashedSeed(),
                 info.getGameMode(), info.getPreviousGamemode(), info.isDebug(), info.isFlat(),
                 info.getLastDeathPos(), info.getPortalCooldown(), info.getSeaLevel());
