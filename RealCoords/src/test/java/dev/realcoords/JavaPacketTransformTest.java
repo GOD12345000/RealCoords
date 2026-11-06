@@ -1,12 +1,18 @@
 package dev.realcoords;
 
 import io.netty.channel.embedded.EmbeddedChannel;
+import org.cloudburstmc.math.vector.Vector3i;
 import org.geysermc.mcprotocollib.network.packet.Packet;
 import org.geysermc.mcprotocollib.protocol.data.game.entity.player.PositionElement;
+import org.geysermc.mcprotocollib.protocol.data.game.entity.player.Hand;
+import org.geysermc.mcprotocollib.protocol.data.game.entity.object.Direction;
+import org.geysermc.mcprotocollib.protocol.data.game.level.block.BlockChangeEntry;
 import org.geysermc.mcprotocollib.protocol.data.game.level.notify.GameEvent;
 import org.geysermc.mcprotocollib.protocol.data.game.level.notify.RainStrengthValue;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.player.ClientboundPlayerPositionPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundLevelChunkWithLightPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundBlockUpdatePacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundUseItemOnPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundGameEventPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundMovePlayerPosPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.player.ServerboundMovePlayerPosRotPacket;
@@ -137,6 +143,33 @@ class JavaPacketTransformTest {
 
         assertEquals(23_000_003.25, restored.getX());
         assertEquals(-17_000_002.5, restored.getZ());
+    }
+
+    @Test
+    void blockUpdateAndBlockInteractionUseInverseCoordinates() {
+        JavaPacketTransform transform = transformer();
+        ClientboundPlayerPositionPacket initial = new ClientboundPlayerPositionPacket(
+                1, 23_000_000, 70, -17_000_000, 0, 0, 0, 0, 0);
+        transform.clientbound(initial);
+
+        Vector3i realBlock = Vector3i.from(23_000_015, 64, -16_999_991);
+        ClientboundBlockUpdatePacket update = new ClientboundBlockUpdatePacket(
+                new BlockChangeEntry(realBlock, 42));
+        ClientboundBlockUpdatePacket local =
+                (ClientboundBlockUpdatePacket) transform.clientbound(update);
+        Vector3i expectedLocal = Vector3i.from(realBlock.getX() - transform.offsetX(),
+                realBlock.getY(), realBlock.getZ() - transform.offsetZ());
+        assertEquals(expectedLocal, local.getEntry().getPosition());
+
+        ServerboundUseItemOnPacket use = new ServerboundUseItemOnPacket(
+                expectedLocal, Direction.UP, Hand.MAIN_HAND, 0.5f, 1.0f, 0.5f,
+                false, false, 1);
+        ServerboundUseItemOnPacket restored =
+                (ServerboundUseItemOnPacket) transform.serverbound(use);
+        assertEquals(realBlock, restored.getPosition());
+        assertEquals(0.5f, restored.getCursorX());
+        assertEquals(1.0f, restored.getCursorY());
+        assertEquals(0.5f, restored.getCursorZ());
     }
 
     @Test
