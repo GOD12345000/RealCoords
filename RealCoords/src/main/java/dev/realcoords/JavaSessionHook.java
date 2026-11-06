@@ -165,7 +165,13 @@ final class JavaSessionHook {
                 if (log != null) log.info("[RealCoords] Java hook first clientbound packet: " + packet.getClass().getName());
             }
             if (message instanceof Packet packet) {
-                super.channelRead(ctx, transform.clientbound(packet));
+                Packet transformed = transform.clientbound(packet);
+                JavaOriginState.Snapshot change = transform.takeOriginChange();
+                if (change != null && log != null) {
+                    log.info("[RealCoords] Java origin changed: offsetX=" + change.offsetX()
+                            + ", offsetZ=" + change.offsetZ());
+                }
+                super.channelRead(ctx, transformed);
                 return;
             }
             super.channelRead(ctx, message);
