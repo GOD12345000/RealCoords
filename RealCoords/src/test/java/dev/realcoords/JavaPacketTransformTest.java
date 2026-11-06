@@ -55,6 +55,18 @@ class JavaPacketTransformTest {
     }
 
     @Test
+    void packetSnapshotRoundTripsThroughMcProtocolLibCodec() {
+        ClientboundBlockUpdatePacket original = new ClientboundBlockUpdatePacket(
+                new BlockChangeEntry(Vector3i.from(123456, 72, -654321), 987));
+        byte[] snapshot = JavaPacketSnapshot.serialize(original);
+        ClientboundBlockUpdatePacket restored =
+                JavaPacketSnapshot.deserialize(ClientboundBlockUpdatePacket.class, snapshot);
+
+        assertEquals(original.getEntry().getPosition(), restored.getEntry().getPosition());
+        assertEquals(original.getEntry().getBlock(), restored.getEntry().getBlock());
+    }
+
+    @Test
     void embeddedChannelReplacesClientboundPacketAndRestoresServerboundMovement() {
         ShiftConfig config = new ShiftConfig();
         config.dims.put(0, new ShiftConfig.Dim());
