@@ -20,12 +20,12 @@ English summary: RealCoords is an experimental Geyser extension that shifts Java
 
 ## 功能概覽
 
-- **每位玩家獨立的浮動原點**：當 Bedrock 玩家距離世界原點達到設定門檻時，平移 Bedrock 客戶端使用的 X/Z 座標系。
+- **每位玩家獨立的浮動原點**：Java 模式在登入、重生／換維度與遠距離傳送時，選擇符合設定門檻與對齊規則的 X/Z 原點。
 - **Java 協議層浮動原點（新模式）**：在 MCProtocolLib 封包進入 Geyser translator 前平移座標，讓 Geyser 內部處理小座標，Java 後端仍使用真實座標。
 - **舊 Bedrock 模式**：保留舊版封包轉換，透過 `origin-shift.layer: bedrock` 選用；兩種模式不會同時啟用。
 - **真實座標 ActionBar**：顯示真實 X/Y/Z 與面向，並可隱藏 Bedrock 原版座標列。
 - **Java 層位置安全檢查**：對還原後的玩家移動座標套用 `safety.max-serverbound-jump`，異常跳躍封包會被丟棄。
-- **區塊快取與重送**：在接近偏移門檻或已經存在偏移時，快取區塊資料，並在需要時分批重新傳送。
+- **舊模式區塊快取與重送**：`layer: bedrock` 保留原本的區塊快取、覆蓋層與分批重送機制；Java 模式階段 1 尚不需要重放。
 - **部分方塊實體 NBT 座標轉換**：針對設定列出的 NBT 座標欄位進行平移。
 
 RealCoords 是 Geyser Extension，不是 Paper／Spigot 插件，也不會直接安裝到 Java 後端伺服器。
@@ -281,7 +281,7 @@ Push 到 main、提交 Pull Request，或手動執行 **Actions → Build RealCo
 ### 已知限制／風險
 
 1. **未完整轉換的封包**：Java 模式仍有未涵蓋的絕對座標封包與 metadata／地圖定位資料；login／respawn 的 `lastDeathPos` 也尚未處理。命令方塊、結構方塊與拼圖方塊位置已加入轉換，但仍需實機核對。
-2. **Java 模式封包覆蓋仍不完整**：Java 層目前只改寫已明確支援的封包。尚未處理的絕對座標封包、實體 metadata 內的 BlockPos、地圖／定位資料與部分管理方塊封包，可能在偏移狀態下錯位。遇到這些功能前應先在測試世界驗證。
+2. **Java 模式封包覆蓋仍不完整**：Java 層目前只改寫已明確支援的封包。尚未處理的絕對座標封包、login／respawn 的 `lastDeathPos`、地圖資料與部分特殊封包，可能在偏移狀態下錯位。遇到這些功能前應先在測試世界驗證。
 3. **實體朝向**：部分實體重新送出時，朝向可能暫時歸零，直到收到下一次移動更新。
 4. **載具**：騎乘載具時發生原點切換，可能短暫抖動。
 5. **區塊快取**：快取上限是每位玩家各自計算；多人使用時需實際監控整體記憶體。
