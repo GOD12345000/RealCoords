@@ -16,6 +16,7 @@ import org.geysermc.geyser.session.GeyserSession;
 
 import java.util.Collections;
 import java.util.IdentityHashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -33,6 +34,10 @@ final class JavaBedrockAuxHook extends ChannelDuplexHandler {
     private final ShiftConfig config;
     private final JavaOriginState origin;
     private final ExtensionLogger log;
+    private static final Set<String> WATCH = Set.of(
+            "UpdateSubChunkBlocksPacket", "SubChunkPacket", "LevelEventGenericPacket",
+            "MapItemDataPacket", "PositionTrackingDBServerBroadcastPacket", "AddPaintingPacket");
+    private final Set<String> warned = new HashSet<>();
     private final Set<BedrockPacket> own = Collections.newSetFromMap(new IdentityHashMap<>());
     private Channel channel;
     private ScheduledFuture<?> actionBarTask;
@@ -106,6 +111,11 @@ final class JavaBedrockAuxHook extends ChannelDuplexHandler {
     private void outbound(BedrockPacketWrapper wrapper) {
         BedrockPacket packet = wrapper.getPacket();
         if (packet == null || own.remove(packet)) return;
+        String packetName = packet.getClass().getSimpleName();
+        if (WATCH.contains(packetName) && warned.add(packetName)) {
+            log.warning("[RealCoords] Java mode WATCH: Geyser emitted " + packetName
+                    + "; verify its world coordinates are derived from transformed Java packets");
+        }
 
         if (packet instanceof StartGamePacket start) {
             localEntityId = start.getRuntimeEntityId();
