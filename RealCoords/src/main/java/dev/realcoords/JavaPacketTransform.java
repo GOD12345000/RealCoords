@@ -329,7 +329,7 @@ final class JavaPacketTransform {
         if (packet instanceof ServerboundMovePlayerPosRotPacket move) {
             double realX = move.getX() + origin.offsetX();
             double realZ = move.getZ() + origin.offsetZ();
-            if (!origin.acceptServerboundPosition(realX, realZ, 64.0)) return null;
+            if (!origin.acceptServerboundPosition(realX, realZ, maxServerboundJump)) return null;
             return move.withX(realX).withZ(realZ);
         }
         return packet;
