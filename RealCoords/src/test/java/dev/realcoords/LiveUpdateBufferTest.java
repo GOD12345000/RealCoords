@@ -45,5 +45,6 @@ class LiveUpdateBufferTest {
     void rejectsInvalidBounds() {
         assertThrows(IllegalArgumentException.class, () -> new LiveUpdateBuffer(0, 1));
         assertThrows(IllegalArgumentException.class, () -> new LiveUpdateBuffer(1, 0));
+        assertTrue(new LiveUpdateBuffer(16, 2).drain().isEmpty());
     }
 }
