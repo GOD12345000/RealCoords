@@ -26,9 +26,10 @@ public class RealCoordsExtension implements Extension {
         if (c == null || !c.enabled) return;
         GeyserSession session = (GeyserSession) event.connection();
         try {
-            // Keep the existing Bedrock hook active while the Java hook is only a non-mutating probe.
             if ("java".equals(c.layer)) {
-                JavaSessionHook.install(session, c, this.logger());
+                JavaOriginState origin = new JavaOriginState(c);
+                JavaSessionHook.install(session, c, origin, this.logger());
+                JavaBedrockAuxHook.install(session, c, origin, this.logger());
             } else {
                 SessionHook.install(session, c, this.logger());
             }
