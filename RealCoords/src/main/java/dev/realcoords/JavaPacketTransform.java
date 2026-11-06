@@ -460,6 +460,10 @@ final class JavaPacketTransform {
         return new DeathPositionUpdate(pendingDeathPositionUpdate);
     }
 
+    int cachedChunkCount() {
+        return chunkReplayCache == null ? 0 : chunkReplayCache.size();
+    }
+
     List<ChunkReplayCache.ReplayChunk> cachedChunks(int centerChunkX, int centerChunkZ, int limit) {
         return chunkReplayCache == null ? List.of()
                 : chunkReplayCache.snapshotNearestFirst(centerChunkX, centerChunkZ, limit);
