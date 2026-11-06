@@ -64,6 +64,16 @@ final class JavaOriginState {
         return new Snapshot(offsetX, offsetZ, oldX != offsetX || oldZ != offsetZ, true);
     }
 
+    boolean acceptServerboundPosition(double x, double z, double maxJump) {
+        if (hasPosition && Math.hypot(x - lastX, z - lastZ) > maxJump) {
+            return false;
+        }
+        lastX = x;
+        lastZ = z;
+        hasPosition = true;
+        return true;
+    }
+
     int offsetX() {
         return offsetX;
     }
