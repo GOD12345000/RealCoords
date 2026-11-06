@@ -93,6 +93,10 @@ final class JavaPacketTransform {
     private boolean replayingCachedPackets;
     private Key currentWorld;
     private PlayerSpawnInfo currentSpawnInfo;
+    private boolean hasPlayerPosition;
+    private double lastPlayerY;
+    private float lastPlayerYaw;
+    private float lastPlayerPitch;
     private JavaOriginState.Snapshot pendingOriginChange;
     private GlobalPos lastDeathPosition;
     private boolean hasLastDeathPosition;
@@ -166,6 +170,13 @@ final class JavaPacketTransform {
                 }
             }
             Vector3d p = position.getPosition();
+            boolean relativeY = position.getRelatives().contains(PositionElement.Y);
+            boolean relativeYaw = position.getRelatives().contains(PositionElement.Y_ROT);
+            boolean relativePitch = position.getRelatives().contains(PositionElement.X_ROT);
+            lastPlayerY = relativeY && hasPlayerPosition ? lastPlayerY + p.getY() : p.getY();
+            lastPlayerYaw = relativeYaw && hasPlayerPosition ? lastPlayerYaw + position.getYRot() : position.getYRot();
+            lastPlayerPitch = relativePitch && hasPlayerPosition ? lastPlayerPitch + position.getXRot() : position.getXRot();
+            hasPlayerPosition = origin.hasPosition();
             return position.withPosition(Vector3d.from(
                     relativeX ? p.getX() : p.getX() - origin.offsetX(),
                     p.getY(),
@@ -440,12 +451,18 @@ final class JavaPacketTransform {
             double realX = move.getX() + origin.offsetX();
             double realZ = move.getZ() + origin.offsetZ();
             if (!origin.acceptServerboundPosition(realX, realZ, maxServerboundJump)) return null;
+            lastPlayerY = move.getY();
+            hasPlayerPosition = true;
             return move.withX(realX).withZ(realZ);
         }
         if (packet instanceof ServerboundMovePlayerPosRotPacket move) {
             double realX = move.getX() + origin.offsetX();
             double realZ = move.getZ() + origin.offsetZ();
             if (!origin.acceptServerboundPosition(realX, realZ, maxServerboundJump)) return null;
+            lastPlayerY = move.getY();
+            lastPlayerYaw = move.getYaw();
+            lastPlayerPitch = move.getPitch();
+            hasPlayerPosition = true;
             return move.withX(realX).withZ(realZ);
         }
         return packet;
@@ -461,6 +478,13 @@ final class JavaPacketTransform {
         if (!deathPositionUpdatePending) return null;
         deathPositionUpdatePending = false;
         return new DeathPositionUpdate(pendingDeathPositionUpdate);
+    }
+
+    ClientboundPlayerPositionPacket syntheticPlayerPosition(int reservedTeleportId) {
+        if (!hasPlayerPosition || !origin.hasPosition()) return null;
+        return new ClientboundPlayerPositionPacket(reservedTeleportId,
+                origin.realX() - origin.offsetX(), lastPlayerY,
+                origin.realZ() - origin.offsetZ(), 0, 0, 0, lastPlayerYaw, lastPlayerPitch);
     }
 
     int syntheticAckTimeoutMillis() {
