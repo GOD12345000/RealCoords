@@ -19,6 +19,7 @@ import org.geysermc.mcprotocollib.network.event.session.PacketErrorEvent;
 import org.geysermc.mcprotocollib.network.event.session.PacketSendingEvent;
 import org.geysermc.mcprotocollib.network.event.session.SessionListener;
 import org.geysermc.mcprotocollib.network.packet.Packet;
+import org.geysermc.mcprotocollib.protocol.codec.MinecraftPacket;
 
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -158,6 +159,7 @@ final class JavaSessionHook {
         private final SyntheticResetGate syntheticResetGate = new SyntheticResetGate();
         private ChannelHandlerContext channelContext;
         private ScheduledFuture<?> syntheticResetTimeout;
+        private ReoriginReplayPlan activeReplayPlan;
 
         JavaPacketTransformHandler(JavaPacketTransform transform, ExtensionLogger log) {
             this(transform, null, log);
@@ -177,6 +179,8 @@ final class JavaSessionHook {
         @Override
         public void handlerRemoved(ChannelHandlerContext ctx) {
             abortSyntheticReset();
+            if (activeReplayPlan != null) activeReplayPlan.abort();
+            activeReplayPlan = null;
             channelContext = null;
         }
 
@@ -231,9 +235,11 @@ final class JavaSessionHook {
             if (channelContext == null || !channelContext.executor().inEventLoop()) {
                 throw new IllegalStateException("Replay snapshot must be prepared on the downstream channel event loop");
             }
+            if (activeReplayPlan != null) throw new IllegalStateException("A replay plan is already active");
             JavaPacketTransform.ReplaySnapshot snapshot = transform.prepareReplaySnapshot(
                     centerChunkX, centerChunkZ, centerX, centerZ, entityRadius);
-            return new ReoriginReplayPlan(snapshot.chunks(), snapshot.entities(), snapshot.globalState());
+            activeReplayPlan = new ReoriginReplayPlan(snapshot.chunks(), snapshot.entities(), snapshot.globalState());
+            return activeReplayPlan;
         }
 
         int replayChunkBatch(ChannelHandlerContext ctx, ReoriginReplayPlan plan, int limit) {
@@ -262,6 +268,36 @@ final class JavaSessionHook {
             for (Packet packet : packets) ctx.fireChannelRead(packet);
             return packets.size();
         }
+
+        int replayLiveUpdates(ChannelHandlerContext ctx, ReoriginReplayPlan plan, int limit) {
+            if (!ctx.executor().inEventLoop()) {
+                throw new IllegalStateException("Live update replay must run on the downstream channel event loop");
+            }
+            if (plan != activeReplayPlan) throw new IllegalStateException("Replay plan is not active on this session");
+            var buffered = plan.nextLiveUpdateBatch(limit);
+            var packets = transform.replayBufferedUpdates(buffered);
+            for (Packet packet : packets) ctx.fireChannelRead(packet);
+            if (plan.aborted()) {
+                activeReplayPlan = null;
+                ctx.close();
+            } else if (plan.complete()) {
+                activeReplayPlan = null;
+            }
+            return packets.size();
+        }
+
+        void abortReplayPlan(ChannelHandlerContext ctx, ReoriginReplayPlan plan) {
+            if (!ctx.executor().inEventLoop()) {
+                throw new IllegalStateException("Replay abort must run on the downstream channel event loop");
+            }
+            if (plan == activeReplayPlan) {
+                plan.abort();
+                activeReplayPlan = null;
+                ctx.close();
+            }
+        }
+
+
 
         int replayCachedChunks(ChannelHandlerContext ctx, int centerChunkX, int centerChunkZ, int limit) {
             return replayCachedChunks(ctx, centerChunkX, centerChunkZ, 0, limit);
@@ -308,6 +344,17 @@ final class JavaSessionHook {
                 if (log != null) log.info("[RealCoords] Java hook first clientbound packet: " + packet.getClass().getName());
             }
             if (message instanceof Packet packet) {
+                if (activeReplayPlan != null && isReplaySensitive(packet)) {
+                    if (packet instanceof MinecraftPacket minecraftPacket
+                            && activeReplayPlan.bufferLiveUpdate(minecraftPacket)) {
+                        return;
+                    }
+                    if (activeReplayPlan != null) activeReplayPlan.abort();
+                    activeReplayPlan = null;
+                    if (log != null) log.warning("[RealCoords] live world update buffer overflowed or could not snapshot a packet; closing session to avoid stale replay state");
+                    ctx.close();
+                    return;
+                }
                 Packet transformed = transform.clientbound(packet);
                 JavaOriginState.Snapshot change = transform.takeOriginChange();
                 if (change != null && log != null) {
@@ -334,6 +381,17 @@ final class JavaSessionHook {
                 return;
             }
             super.channelRead(ctx, message);
+        }
+
+        private static boolean isReplaySensitive(Packet packet) {
+            String packageName = packet.getClass().getPackageName();
+            String className = packet.getClass().getSimpleName();
+            return packageName.contains(".clientbound.level")
+                    || packageName.contains(".clientbound.entity")
+                    || packageName.contains(".clientbound.scoreboard")
+                    || className.equals("ClientboundChangeDifficultyPacket")
+                    || className.equals("ClientboundBossEventPacket")
+                    || className.equals("ClientboundGameRuleValuesPacket");
         }
 
         @Override
