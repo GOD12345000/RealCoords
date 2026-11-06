@@ -45,7 +45,7 @@ chunk-cache:
   max-bytes: 33554432
   # 距離觸發值還有多遠（格）就開始保存區塊。必須大於伺服器視距（格）
   activate-margin: 1500
-  # 每個重放批次最多處理幾個區塊（Java 分批核心已完成，自動排程尚未啟用）
+  # 每個重放批次最多處理幾個區塊（shift-while-moving 啟用時由 Java 交易自動排程）
   resend-per-tick: 24
   # 超出視距多少個區塊後從快取移除
   evict-margin-chunks: 4
