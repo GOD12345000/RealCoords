@@ -139,4 +139,41 @@ class JavaSessionHookTest {
         assertFalse(channel.isOpen());
         channel.finishAndReleaseAll();
     }
+
+    @Test
+    void buffersWorldUpdatesFromPrepareUntilReplayPlanIsCreated() {
+        ShiftConfig config = new ShiftConfig();
+        config.dims.put(0, new ShiftConfig.Dim());
+        JavaPacketTransform transform = new JavaPacketTransform(config);
+        JavaSessionHook.JavaPacketTransformHandler handler =
+                new JavaSessionHook.JavaPacketTransformHandler(transform, null, null);
+        EmbeddedChannel channel = new EmbeddedChannel(handler);
+
+        assertTrue(handler.beginSyntheticReset(333));
+        ClientboundGameEventPacket live = new ClientboundGameEventPacket(GameEvent.START_RAINING, null);
+
+        channel.writeInbound(live);
+        assertNull(channel.readInbound(),
+                "clientbound world updates must be held from PREPARE, before a replay plan exists");
+
+        ReoriginReplayPlan plan = handler.prepareReplayPlan(0, 0, 0, 0, 256);
+        assertEquals(1, plan.globalStatePacketCount(),
+                "the live update must update the global-state cache when it arrives");
+        assertEquals(1, plan.bufferedLiveUpdateCount(),
+                "the raw live update must be transferred into the replay plan");
+
+        handler.replayChunkBatch(channel.pipeline().context(handler), plan, 8);
+        handler.replayEntityBatch(channel.pipeline().context(handler), plan, 8);
+        handler.replayGlobalState(channel.pipeline().context(handler), plan);
+        handler.replayLiveUpdates(channel.pipeline().context(handler), plan, 8);
+
+        ClientboundGameEventPacket cached = channel.readInbound();
+        ClientboundGameEventPacket liveAfterReplay = channel.readInbound();
+        assertNotNull(cached);
+        assertNotNull(liveAfterReplay);
+        assertEquals(GameEvent.START_RAINING, cached.getNotification());
+        assertEquals(GameEvent.START_RAINING, liveAfterReplay.getNotification());
+        assertTrue(plan.complete());
+        channel.finishAndReleaseAll();
+    }
 }
