@@ -579,6 +579,10 @@ final class JavaPacketTransform {
     }
 
     Packet serverbound(Packet packet) {
+        return serverbound(packet, true);
+    }
+
+    Packet serverbound(Packet packet, boolean allowOriginShift) {
         if (packet instanceof ServerboundAcceptTeleportationPacket accept) {
             // Geyser includes its Bedrock-confirmed position in this packet.
             // Restore the floating-origin offset just like ordinary movement.
@@ -633,7 +637,7 @@ final class JavaPacketTransform {
             double realX = p.getX() + origin.offsetX();
             double realZ = p.getZ() + origin.offsetZ();
             lastPlayerY = p.getY();
-            if (!acceptMovementPosition(realX, realZ)) return null;
+            if (!acceptMovementPosition(realX, realZ, allowOriginShift)) return null;
             return move.withPosition(Vector3d.from(realX, p.getY(), realZ));
         }
         if (packet instanceof ServerboundMovePlayerPosPacket move) {
@@ -641,7 +645,7 @@ final class JavaPacketTransform {
             double realZ = move.getZ() + origin.offsetZ();
             lastPlayerY = move.getY();
             hasPlayerPosition = true;
-            if (!acceptMovementPosition(realX, realZ)) return null;
+            if (!acceptMovementPosition(realX, realZ, allowOriginShift)) return null;
             return move.withX(realX).withZ(realZ);
         }
         if (packet instanceof ServerboundMovePlayerPosRotPacket move) {
@@ -651,7 +655,7 @@ final class JavaPacketTransform {
             lastPlayerYaw = move.getYaw();
             lastPlayerPitch = move.getPitch();
             hasPlayerPosition = true;
-            if (!acceptMovementPosition(realX, realZ)) return null;
+            if (!acceptMovementPosition(realX, realZ, allowOriginShift)) return null;
             return move.withX(realX).withZ(realZ);
         }
         return packet;
@@ -692,12 +696,12 @@ final class JavaPacketTransform {
         return false;
     }
 
-    private boolean acceptMovementPosition(double realX, double realZ) {
+    private boolean acceptMovementPosition(double realX, double realZ, boolean allowOriginShift) {
         int chunkX = (int) Math.floor(realX / 16.0);
         int chunkZ = (int) Math.floor(realZ / 16.0);
         boolean replayCacheAvailable = chunkReplayCache != null
                 && !chunkReplayCache.snapshotWithinRadius(chunkX, chunkZ, 1, 1).isEmpty();
-        if (!origin.acceptServerboundPosition(realX, realZ, maxServerboundJump, replayCacheAvailable)) return false;
+        if (!origin.acceptServerboundPosition(realX, realZ, maxServerboundJump, replayCacheAvailable, allowOriginShift)) return false;
         JavaOriginState.Snapshot movementChange = origin.takeMovementOriginChange();
         if (movementChange != null && movementChange.changed()) {
             pendingOriginChange = movementChange;

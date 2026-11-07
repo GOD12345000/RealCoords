@@ -159,6 +159,7 @@ final class JavaSessionHook {
         private final JavaPacketTransform transform;
         private final GeyserSession geyserSession;
         private final SyntheticResetGate syntheticResetGate = new SyntheticResetGate();
+        private final TransitionDeferralState deferralState = new TransitionDeferralState();
         private ChannelHandlerContext channelContext;
         private ScheduledFuture<?> syntheticResetTimeout;
         private ScheduledFuture<?> replayBatchTask;
@@ -394,6 +395,7 @@ final class JavaSessionHook {
                 if (log != null) log.info("[RealCoords] Java hook first clientbound packet: " + packet.getClass().getName());
             }
             if (message instanceof Packet packet) {
+                observeDeferralPacket(packet);
                 if (isImmediatePassThroughPacket(packet)) {
                     super.channelRead(ctx, packet);
                     return;
@@ -483,6 +485,48 @@ final class JavaSessionHook {
                 return;
             }
             super.channelRead(ctx, message);
+        }
+
+        private void observeDeferralPacket(Packet packet) {
+            if (channelContext != null && !channelContext.executor().inEventLoop()) {
+                throw new IllegalStateException("deferral state accessed outside the Java handler event loop");
+            }
+            String name = packet.getClass().getSimpleName();
+            try {
+                if (name.equals("ClientboundLoginPacket")) {
+                    Object entityId = packet.getClass().getMethod("getEntityId").invoke(packet);
+                    if (entityId instanceof Number number) deferralState.initialize(number.intValue());
+                } else if (name.equals("ClientboundRespawnPacket")) {
+                    deferralState.resetForRespawn();
+                } else if (name.equals("ClientboundOpenScreenPacket")
+                        || name.equals("ClientboundOpenHorseScreenPacket")) {
+                    deferralState.observeContainerOpened();
+                } else if (name.equals("ClientboundContainerClosePacket")) {
+                    deferralState.observeContainerClosed();
+                } else if (name.equals("ClientboundSetPassengersPacket")) {
+                    Object vehicle = packet.getClass().getMethod("getEntityId").invoke(packet);
+                    Object passengers = packet.getClass().getMethod("getPassengerIds").invoke(packet);
+                    if (vehicle instanceof Number v && passengers instanceof int[] ids) {
+                        deferralState.observePassengers(v.intValue(), ids);
+                    }
+                } else if (name.equals("ClientboundSetEntityDataPacket")) {
+                    Object entity = packet.getClass().getMethod("getEntityId").invoke(packet);
+                    Object metadata = packet.getClass().getMethod("getMetadata").invoke(packet);
+                    if (entity instanceof Number e && metadata instanceof Object[] entries) {
+                        for (Object entry : entries) {
+                            if (entry == null) continue;
+                            Object id = entry.getClass().getMethod("getId").invoke(entry);
+                            Object value = entry.getClass().getMethod("getValue").invoke(entry);
+                            if (id instanceof Number metadataId) {
+                                deferralState.observePlayerMetadata(e.intValue(), metadataId.intValue(), value);
+                            }
+                        }
+                    }
+                }
+            } catch (ReflectiveOperationException | RuntimeException exception) {
+                if (log != null) log.warning("[RealCoords] unable to observe deferral packet "
+                        + name + ": " + exception.getClass().getSimpleName());
+            }
         }
 
         private int allocateSyntheticTeleportId() {
@@ -660,7 +704,7 @@ final class JavaSessionHook {
                     promise.setSuccess();
                     return;
                 }
-                Packet transformed = transform.serverbound(packet);
+                Packet transformed = transform.serverbound(packet, !deferralState.shouldDefer());
                 JavaOriginState.Snapshot movementOriginChange = transform.takeOriginChange();
                 if (movementOriginChange != null && movementOriginChange.changed()) {
                     promise.setSuccess();
