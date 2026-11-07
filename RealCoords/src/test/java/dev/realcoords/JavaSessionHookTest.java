@@ -141,6 +141,7 @@ class JavaSessionHookTest {
         assertNotNull(replayed);
         assertEquals(GameEvent.START_RAINING, replayed.getNotification());
         assertTrue(plan.complete());
+        assertEquals(ReoriginTransition.State.NORMAL, handler.transitionState());
         channel.finishAndReleaseAll();
     }
 
@@ -572,4 +573,24 @@ class JavaSessionHookTest {
         channel.finishAndReleaseAll();
     }
 
+    @Test
+    void livePlayerPositionQueueOverflowFailsTransitionAndClosesChannel() {
+        ShiftConfig config = new ShiftConfig();
+        config.dims.put(0, new ShiftConfig.Dim());
+        JavaSessionHook.JavaPacketTransformHandler handler =
+                new JavaSessionHook.JavaPacketTransformHandler(new JavaPacketTransform(config), null, null);
+        EmbeddedChannel channel = new EmbeddedChannel(handler);
+        assertTrue(handler.beginSyntheticReset(-804));
+
+        for (int i = 0; i < 4097 && channel.isOpen(); i++) {
+            channel.writeInbound(new ClientboundPlayerPositionPacket(
+                    i, 100 + i, 70, 200 + i, 0, 0, 0, 0, 0));
+        }
+
+        assertEquals(ReoriginTransition.State.FAILED, handler.transitionState());
+        assertEquals(ReoriginTransition.State.RESET, handler.transitionFailure().failedAt());
+        assertTrue(handler.transitionFailure().reason().contains("queue overflow"));
+        assertFalse(channel.isOpen());
+        channel.finishAndReleaseAll();
+    }
 }

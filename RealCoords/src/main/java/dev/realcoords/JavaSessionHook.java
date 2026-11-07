@@ -266,8 +266,7 @@ final class JavaSessionHook {
             preparingLiveUpdates = new LiveUpdateBuffer(transform.liveUpdateBudgetBytes(), 4096);
             cancelSyntheticResetTimeout();
             syntheticResetTimeout = ctx.executor().schedule(() -> {
-                if (log != null) log.warning("[RealCoords] synthetic reset acknowledgement timed out; closing downstream session to prevent synthetic packet leakage");
-                abortSyntheticReset();
+                failTransition(ctx, "synthetic reset acknowledgement timed out");
             }, transform.syntheticAckTimeoutMillis(), TimeUnit.MILLISECONDS);
             return true;
         }
@@ -399,9 +398,7 @@ final class JavaSessionHook {
             }
             if (plan == activeReplayPlan) {
                 plan.abort();
-                activeReplayPlan = null;
-                cancelReplayTasks();
-                ctx.close();
+                failTransition(ctx, "replay plan explicitly aborted");
             }
         }
 
