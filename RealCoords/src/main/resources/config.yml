@@ -36,6 +36,8 @@ origin-shift:
 
 safety:
   max-serverbound-jump: 64.0
+  # Transition / grace movement limit; must be >= max-serverbound-jump
+  transition-grace-max-jump: 256.0
   correction-interval-ticks: 10
   debug-log: false
 

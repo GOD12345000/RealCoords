@@ -183,9 +183,12 @@ Java／Geyser 會在部分座標處理路徑使用 IEEE 754 `float`。數值越�
 
 | 參數 | 目前預設值 | 說明 |
 |---|---:|---|
-| max-serverbound-jump | 64.0 | 對送往伺服器的位置跳躍進行限制檢查 |
+| max-serverbound-jump | 64.0 | 一般狀態下，玩家相鄰兩個已接受真實 X/Z 位置的最大水平距離 |
+| transition-grace-max-jump | 256.0 | PREPARE／RESET／REPLAY／DRAIN 與寬限期使用的最大水平距離；必須不小於 max-serverbound-jump，缺少時使用 256.0，無效或過小時自動調整為 max-serverbound-jump |
 | correction-interval-ticks | 10 | 舊 Bedrock 模式補送位置修正封包的最短間隔 |
 | debug-log | false | 是否輸出額外除錯資訊 |
+
+**Java 模式 transition 計時設定：** `origin-shift.transition-cooldown-ticks`（預設 600）是一次完整 re-origin 完成後，禁止再次觸發移動式 re-origin 的最短間隔；它不會阻止正常移動封包送往 Java。舊的 `origin-shift.cooldown-ticks`（預設 100）只供舊 Bedrock layer 的偏移／確認流程使用，兩者用途不同。`origin-shift.transition-grace-ticks`（預設 20）是 transition 完成後套用較寬移動上限的時間；transition 進行中也使用同一上限。寬限期間的上限由 `safety.transition-grace-max-jump` 控制（預設 256 格），不是停用防呆；一般時段則使用 `safety.max-serverbound-jump`（預設 64 格）。距離一律比較上一個已接受的真實 X/Z 位置，超限封包會被丟棄，不會送往 Java。
 
 ### chunk-cache：區塊快取
 

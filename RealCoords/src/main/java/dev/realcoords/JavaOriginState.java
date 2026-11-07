@@ -113,8 +113,12 @@ final class JavaOriginState {
         return acceptServerboundPosition(x, z, maxJump, true);
     }
 
+    double distanceFromLastPosition(double x, double z) {
+        return hasPosition ? Math.hypot(x - lastX, z - lastZ) : 0.0;
+    }
+
     boolean observeServerboundPosition(double x, double z, double maxJump) {
-        if (hasPosition && Math.hypot(x - lastX, z - lastZ) > maxJump) return false;
+        if (hasPosition && distanceFromLastPosition(x, z) > maxJump) return false;
         lastX = x;
         lastZ = z;
         hasPosition = true;

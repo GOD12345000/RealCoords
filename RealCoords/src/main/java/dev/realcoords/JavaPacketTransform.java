@@ -102,6 +102,7 @@ import java.util.List;
  * pass through unchanged and must be reviewed before they are considered supported.
  */
 final class JavaPacketTransform {
+    record MovementRejection(double distance, double limit) {
     private final JavaOriginState origin;
     private int viewDistanceChunks = 10;
     private final double maxServerboundJump;
@@ -118,6 +119,7 @@ final class JavaPacketTransform {
     private float lastPlayerYaw;
     private float lastPlayerPitch;
     private JavaOriginState.Snapshot pendingOriginChange;
+    private MovementRejection pendingMovementRejection;
     private GlobalPos lastDeathPosition;
     private boolean hasLastDeathPosition;
     private GlobalPos pendingDeathPositionUpdate;
@@ -587,7 +589,12 @@ final class JavaPacketTransform {
     }
 
     Packet serverbound(Packet packet, boolean allowOriginShift, boolean relaxSafetyGuard) {
-        double jumpLimit = relaxSafetyGuard ? Double.POSITIVE_INFINITY : maxServerboundJump;
+        double jumpLimit = relaxSafetyGuard ? transitionGraceMaxJump() : maxServerboundJump;
+        return serverbound(packet, allowOriginShift, jumpLimit);
+    }
+
+    Packet serverbound(Packet packet, boolean allowOriginShift, double jumpLimit) {
+        pendingMovementRejection = null;
         if (packet instanceof ServerboundAcceptTeleportationPacket accept) {
             // Geyser includes its Bedrock-confirmed position in this packet.
             // Restore the floating-origin offset just like ordinary movement.
@@ -667,18 +674,23 @@ final class JavaPacketTransform {
     }
 
     boolean observeMovementDuringReplay(Packet packet) {
+        return observeMovementDuringReplay(packet, maxServerboundJump);
+    }
+
+    boolean observeMovementDuringReplay(Packet packet, double jumpLimit) {
+        pendingMovementRejection = null;
         if (packet instanceof ServerboundMoveVehiclePacket move) {
             Vector3d position = move.getPosition();
             double realX = position.getX() + origin.offsetX();
             double realZ = position.getZ() + origin.offsetZ();
-            if (!origin.observeServerboundPosition(realX, realZ, maxServerboundJump)) return false;
+            if (!acceptMovementPosition(realX, realZ, false, jumpLimit)) return false;
             lastPlayerY = position.getY();
             return true;
         }
         if (packet instanceof ServerboundMovePlayerPosPacket move) {
             double realX = move.getX() + origin.offsetX();
             double realZ = move.getZ() + origin.offsetZ();
-            if (!origin.observeServerboundPosition(realX, realZ, maxServerboundJump)) return false;
+            if (!acceptMovementPosition(realX, realZ, false, jumpLimit)) return false;
             lastPlayerY = move.getY();
             hasPlayerPosition = true;
             return true;
@@ -686,7 +698,7 @@ final class JavaPacketTransform {
         if (packet instanceof ServerboundMovePlayerPosRotPacket move) {
             double realX = move.getX() + origin.offsetX();
             double realZ = move.getZ() + origin.offsetZ();
-            if (!origin.observeServerboundPosition(realX, realZ, maxServerboundJump)) return false;
+            if (!acceptMovementPosition(realX, realZ, false, jumpLimit)) return false;
             lastPlayerY = move.getY();
             lastPlayerYaw = move.getYaw();
             lastPlayerPitch = move.getPitch();
@@ -701,12 +713,31 @@ final class JavaPacketTransform {
         return false;
     }
 
+    MovementRejection takeMovementRejection() {
+        MovementRejection rejection = pendingMovementRejection;
+        pendingMovementRejection = null;
+        return rejection;
+    }
+
+    double maxServerboundJump() {
+        return maxServerboundJump;
+    }
+
+    double transitionGraceMaxJump() {
+        return config == null ? Math.max(256.0, maxServerboundJump) : config.transitionGraceMaxJump;
+    }
+
     private boolean acceptMovementPosition(double realX, double realZ, boolean allowOriginShift, double jumpLimit) {
+        pendingMovementRejection = null;
+        double distance = origin.distanceFromLastPosition(realX, realZ);
         int chunkX = (int) Math.floor(realX / 16.0);
         int chunkZ = (int) Math.floor(realZ / 16.0);
         boolean replayCacheAvailable = chunkReplayCache != null
                 && !chunkReplayCache.snapshotWithinRadius(chunkX, chunkZ, 1, 1).isEmpty();
-        if (!origin.acceptServerboundPosition(realX, realZ, jumpLimit, replayCacheAvailable, allowOriginShift)) return false;
+        if (!origin.acceptServerboundPosition(realX, realZ, jumpLimit, replayCacheAvailable, allowOriginShift)) {
+            pendingMovementRejection = new MovementRejection(distance, jumpLimit);
+            return false;
+        }
         JavaOriginState.Snapshot movementChange = origin.takeMovementOriginChange();
         if (movementChange != null && movementChange.changed()) {
             pendingOriginChange = movementChange;
@@ -766,6 +797,7 @@ final class JavaPacketTransform {
 
     int transitionCooldownTicks() { return config.transitionCooldownTicks; }
     int transitionGraceTicks() { return config.transitionGraceTicks; }
+    
 
     TransitionWalkFallback.Action deferredWalkFallback(Packet packet) {
         double localX;

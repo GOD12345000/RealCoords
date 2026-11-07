@@ -27,4 +27,10 @@ final class TransitionTimingPolicy {
     boolean safetyGuardRelaxed(boolean transitionActive, long nowNanos) {
         return transitionActive || graceActive(nowNanos);
     }
+
+    double movementJumpLimit(boolean transitionActive, long nowNanos,
+                             double maxServerboundJump, double transitionGraceMaxJump) {
+        return safetyGuardRelaxed(transitionActive, nowNanos)
+                ? transitionGraceMaxJump : maxServerboundJump;
+    }
 }

@@ -721,6 +721,17 @@ final class JavaSessionHook {
             if (timeout != null) timeout.cancel(false);
         }
 
+        private void logMovementRejection() {
+            JavaPacketTransform.MovementRejection rejection = transform.takeMovementRejection();
+            if (rejection == null) return;
+            long now = System.currentTimeMillis();
+            if (now - lastGuardWarningMs >= 5000) {
+                lastGuardWarningMs = now;
+                if (log != null) log.warning("[RealCoords] dropped serverbound movement: distance="
+                        + rejection.distance() + " blocks, limit=" + rejection.limit() + " blocks");
+            }
+        }
+
         private static boolean isImmediatePassThroughPacket(Packet packet) {
             String name = packet.getClass().getSimpleName();
             return name.equals("ClientboundPingPacket")
@@ -784,17 +795,30 @@ final class JavaSessionHook {
                     super.write(ctx, packet, promise);
                     return;
                 }
+                long nowNanos = System.nanoTime();
+                boolean transitionActive = transition.state() != ReoriginTransition.State.NORMAL
+                        && transition.state() != ReoriginTransition.State.FAILED;
+                double jumpLimit = timingPolicy.movementJumpLimit(transitionActive, nowNanos,
+                        transform.maxServerboundJump(), transform.transitionGraceMaxJump());
                 if (isMovementPacket(packet)
                         && (syntheticResetGate.active() || syntheticResetPendingReplay)) {
+                    transform.observeMovementDuringReplay(packet, jumpLimit);
+                    logMovementRejection();
                     promise.setSuccess();
                     return;
                 }
                 if (isMovementPacket(packet) && activeReplayPlan != null) {
-                    transform.observeMovementDuringReplay(packet);
+                    transform.observeMovementDuringReplay(packet, jumpLimit);
+                    logMovementRejection();
                     promise.setSuccess();
                     return;
                 }
                 if (deferralState.shouldDefer() && isMovementPacket(packet)) {
+                    if (!transform.observeMovementDuringReplay(packet, jumpLimit)) {
+                        logMovementRejection();
+                        promise.setSuccess();
+                        return;
+                    }
                     TransitionWalkFallback.Action fallback = transform.deferredWalkFallback(packet);
                     if (fallback == TransitionWalkFallback.Action.KICK) {
                         promise.setSuccess();
@@ -814,12 +838,8 @@ final class JavaSessionHook {
                         return;
                     }
                 }
-                long nowNanos = System.nanoTime();
-                boolean transitionActive = transition.state() != ReoriginTransition.State.NORMAL
-                        && transition.state() != ReoriginTransition.State.FAILED;
-                boolean relaxGuard = timingPolicy.safetyGuardRelaxed(transitionActive, nowNanos);
                 boolean allowOriginShift = !deferralState.shouldDefer() && !timingPolicy.cooldownActive(nowNanos);
-                Packet transformed = transform.serverbound(packet, allowOriginShift, relaxGuard);
+                Packet transformed = transform.serverbound(packet, allowOriginShift, jumpLimit);
                 JavaOriginState.Snapshot movementOriginChange = transform.takeOriginChange();
                 if (movementOriginChange != null && movementOriginChange.changed()) {
                     promise.setSuccess();
@@ -834,11 +854,7 @@ final class JavaSessionHook {
                     super.write(ctx, transformed, promise);
                 } else {
                     promise.setSuccess();
-                    long now = System.currentTimeMillis();
-                    if (now - lastGuardWarningMs >= 5000) {
-                        lastGuardWarningMs = now;
-                        if (log != null) log.warning("[RealCoords] dropped an implausible Java serverbound player movement packet");
-                    }
+                    logMovementRejection();
                 }
                 return;
             }

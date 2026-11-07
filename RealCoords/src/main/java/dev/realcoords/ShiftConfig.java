@@ -30,7 +30,7 @@ final class ShiftConfig {
     int transitionCooldownTicks = 600;
     int transitionGraceTicks = 20;
     String walkFallback = "none";
-    double ackTolerance = 4.0, maxJump = 64.0;
+    double ackTolerance = 4.0, maxJump = 64.0, transitionGraceMaxJump = 256.0;
 
     boolean cacheEnabled = true, cacheCompress = true;
     int cacheMaxChunks = 2500, cacheMargin = 1500, resendPerTick = 24, evictMarginChunks = 4;
@@ -130,6 +130,14 @@ final class ShiftConfig {
         Map<String, Object> sf = sec(root, "safety");
         double configuredMaxJump = dbl(sf, "max-serverbound-jump", 64.0);
         c.maxJump = Double.isFinite(configuredMaxJump) ? Math.max(1.0, configuredMaxJump) : 64.0;
+        double configuredTransitionGraceMaxJump = dbl(sf, "transition-grace-max-jump", 256.0);
+        if (!Double.isFinite(configuredTransitionGraceMaxJump)
+                || configuredTransitionGraceMaxJump < c.maxJump) {
+            warning.accept("[RealCoords] safety.transition-grace-max-jump 必須是有限數值且不小於 max-serverbound-jump，已調整為 max-serverbound-jump");
+            c.transitionGraceMaxJump = c.maxJump;
+        } else {
+            c.transitionGraceMaxJump = configuredTransitionGraceMaxJump;
+        }
         c.guardIntervalMs = num(sf, "correction-interval-ticks", 10) * 50;
         c.debug = bool(sf, "debug-log", false);
 
