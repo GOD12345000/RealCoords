@@ -21,6 +21,7 @@ import org.geysermc.mcprotocollib.network.event.session.SessionListener;
 import org.geysermc.mcprotocollib.network.packet.Packet;
 import org.geysermc.mcprotocollib.protocol.codec.MinecraftPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.player.ClientboundPlayerPositionPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.level.ServerboundAcceptTeleportationPacket;
 
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -640,6 +641,13 @@ final class JavaSessionHook {
                         }
                     }
                     promise.setSuccess();
+                    return;
+                }
+                // Geyser has already confirmed this backend teleport in Bedrock
+                // coordinates. Forward the acknowledgement unchanged; only the
+                // synthetic-reset gate above may consume a synthetic confirmation.
+                if (packet instanceof ServerboundAcceptTeleportationPacket) {
+                    super.write(ctx, packet, promise);
                     return;
                 }
                 if (isMovementPacket(packet)
