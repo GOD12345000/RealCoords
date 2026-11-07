@@ -758,4 +758,131 @@ class JavaSessionHookTest {
         channel.close();
         channel.finishAndReleaseAll();
     }
+    @Test
+    void boundedJumpGuardUsesTheSameAcceptedPositionAcrossTransitionPhases() throws Exception {
+        for (ReoriginTransition.State phase : List.of(
+                ReoriginTransition.State.PREPARE,
+                ReoriginTransition.State.RESET,
+                ReoriginTransition.State.REPLAY,
+                ReoriginTransition.State.DRAIN)) {
+            ShiftConfig config = new ShiftConfig();
+            config.dims.put(0, new ShiftConfig.Dim());
+            JavaPacketTransform transform = new JavaPacketTransform(config);
+            JavaSessionHook.JavaPacketTransformHandler handler =
+                    new JavaSessionHook.JavaPacketTransformHandler(transform, null, null);
+            EmbeddedChannel channel = new EmbeddedChannel(handler);
+            initializeMovementFixture(channel, transform);
+
+            if (phase == ReoriginTransition.State.PREPARE || phase == ReoriginTransition.State.RESET) {
+                assertTrue(handler.beginSyntheticReset(-900 - phase.ordinal()));
+            } else {
+                handler.prepareReplayPlan(0, 0, transform.realX(), transform.realZ(), 256);
+            }
+            setTransitionPhase(handler, phase);
+            assertEquals(phase, handler.transitionState(), "the packet must be tested in the requested phase");
+
+            double before = transform.realX();
+            double localX = before - transform.offsetX();
+            ServerboundMovePlayerPosPacket oneHundred =
+                    new ServerboundMovePlayerPosPacket(true, false, localX + 100, 70,
+                            transform.realZ() - transform.offsetZ());
+            assertFalse(channel.writeOutbound(oneHundred),
+                    "movement remains frozen/consumed during " + phase);
+            assertNull(channel.readOutbound());
+            assertEquals(before + 100, transform.realX(), 0.001,
+                    "100 blocks must be accepted by the same bounded guard during " + phase);
+
+            double accepted = transform.realX();
+            ServerboundMovePlayerPosPacket offsetScale =
+                    new ServerboundMovePlayerPosPacket(true, false,
+                            accepted - transform.offsetX() + 50_000, 70,
+                            transform.realZ() - transform.offsetZ());
+            assertFalse(channel.writeOutbound(offsetScale),
+                    "50,000-block stale-coordinate movement must not be forwarded during " + phase);
+            assertNull(channel.readOutbound());
+            assertEquals(accepted, transform.realX(), 0.001,
+                    "rejected movement must not replace the last accepted real position during " + phase);
+            channel.close();
+            channel.finishAndReleaseAll();
+        }
+    }
+
+    @Test
+    void boundedJumpGuardAppliesInGraceAndReturnsToStrictLimitAfterGrace() throws Exception {
+        ShiftConfig config = new ShiftConfig();
+        config.dims.put(0, new ShiftConfig.Dim());
+        JavaPacketTransform transform = new JavaPacketTransform(config);
+        JavaSessionHook.JavaPacketTransformHandler handler =
+                new JavaSessionHook.JavaPacketTransformHandler(transform, null, null);
+        EmbeddedChannel channel = new EmbeddedChannel(handler);
+        initializeMovementFixture(channel, transform);
+        transitionCompletedNow(handler);
+
+        double before = transform.realX();
+        ServerboundMovePlayerPosPacket oneHundred = new ServerboundMovePlayerPosPacket(
+                true, false, before - transform.offsetX() + 100, 70,
+                transform.realZ() - transform.offsetZ());
+        assertTrue(channel.writeOutbound(oneHundred));
+        ServerboundMovePlayerPosPacket forwarded = channel.readOutbound();
+        assertNotNull(forwarded);
+        assertEquals(before + 100, forwarded.getX(), 0.001);
+
+        double accepted = transform.realX();
+        ServerboundMovePlayerPosPacket offsetScale = new ServerboundMovePlayerPosPacket(
+                true, false, accepted - transform.offsetX() + 50_000, 70,
+                transform.realZ() - transform.offsetZ());
+        assertFalse(channel.writeOutbound(offsetScale),
+                "50,000-block movement must be rejected during grace, not forwarded");
+        assertNull(channel.readOutbound());
+        assertEquals(accepted, transform.realX(), 0.001);
+
+        setTransitionCompletedAt(handler, System.nanoTime() - 2_000_000_000L);
+        ServerboundMovePlayerPosPacket afterGrace = new ServerboundMovePlayerPosPacket(
+                true, false, accepted - transform.offsetX() + 100, 70,
+                transform.realZ() - transform.offsetZ());
+        assertFalse(channel.writeOutbound(afterGrace),
+                "after grace expires, max-serverbound-jump must return to 64 blocks");
+        assertNull(channel.readOutbound());
+        channel.finishAndReleaseAll();
+    }
+
+    private static void initializeMovementFixture(EmbeddedChannel channel, JavaPacketTransform transform) {
+        Key world = Key.key("minecraft:overworld");
+        PlayerSpawnInfo spawn = new PlayerSpawnInfo(0, world, 0L, GameMode.SURVIVAL,
+                null, false, false, null, 0, 63);
+        channel.writeInbound(new ClientboundLoginPacket(42, false, new Key[]{world},
+                20, 10, 10, false, true, false, spawn, true, true));
+        channel.writeInbound(new ClientboundPlayerPositionPacket(
+                1, 23_000_000, 70, -17_000_000, 0, 0, 0, 0, 0));
+        while (channel.readInbound() != null) { }
+    }
+
+    private static void setTransitionPhase(JavaSessionHook.JavaPacketTransformHandler handler,
+                                           ReoriginTransition.State phase) throws Exception {
+        java.lang.reflect.Field transitionField = handler.getClass().getDeclaredField("transition");
+        transitionField.setAccessible(true);
+        ReoriginTransition transition = (ReoriginTransition) transitionField.get(handler);
+        java.lang.reflect.Field stateField = ReoriginTransition.class.getDeclaredField("state");
+        stateField.setAccessible(true);
+        stateField.set(transition, phase);
+    }
+
+    private static void transitionCompletedNow(JavaSessionHook.JavaPacketTransformHandler handler) throws Exception {
+        java.lang.reflect.Field timingField = handler.getClass().getDeclaredField("timingPolicy");
+        timingField.setAccessible(true);
+        TransitionTimingPolicy policy = (TransitionTimingPolicy) timingField.get(handler);
+        policy.transitionCompleted(System.nanoTime());
+    }
+
+    private static void setTransitionCompletedAt(JavaSessionHook.JavaPacketTransformHandler handler,
+                                                  long completedAtNanos) throws Exception {
+        java.lang.reflect.Field timingField = handler.getClass().getDeclaredField("timingPolicy");
+        timingField.setAccessible(true);
+        TransitionTimingPolicy policy = (TransitionTimingPolicy) timingField.get(handler);
+        java.lang.reflect.Field completedField =
+                TransitionTimingPolicy.class.getDeclaredField("lastTransitionCompletedNanos");
+        completedField.setAccessible(true);
+        completedField.setLong(policy, completedAtNanos);
+    }
+
 }
