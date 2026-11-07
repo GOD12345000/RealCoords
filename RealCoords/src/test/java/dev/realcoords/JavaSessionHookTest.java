@@ -12,6 +12,13 @@ import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.Clientbound
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundGameEventPacket;
 import org.geysermc.mcprotocollib.protocol.data.game.level.notify.GameEvent;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.level.ServerboundAcceptTeleportationPacket;
+import org.geysermc.mcprotocollib.protocol.packet.common.clientbound.ClientboundKeepAlivePacket;
+import org.geysermc.mcprotocollib.protocol.packet.common.clientbound.ClientboundPingPacket;
+import org.geysermc.mcprotocollib.protocol.packet.common.serverbound.ServerboundKeepAlivePacket;
+import org.geysermc.mcprotocollib.protocol.packet.common.serverbound.ServerboundPongPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundChunkBatchFinishedPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundChunkBatchStartPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.level.ServerboundChunkBatchReceivedPacket;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -173,6 +180,66 @@ class JavaSessionHookTest {
         assertNotNull(liveAfterReplay);
         assertEquals(GameEvent.START_RAINING, cached.getNotification());
         assertEquals(GameEvent.START_RAINING, liveAfterReplay.getNotification());
+        assertTrue(plan.complete());
+        channel.finishAndReleaseAll();
+    }
+
+    @Test
+    void passesControlAndChunkBatchPacketsImmediatelyDuringPrepare() {
+        ShiftConfig config = new ShiftConfig();
+        config.dims.put(0, new ShiftConfig.Dim());
+        JavaSessionHook.JavaPacketTransformHandler handler =
+                new JavaSessionHook.JavaPacketTransformHandler(new JavaPacketTransform(config), null, null);
+        EmbeddedChannel channel = new EmbeddedChannel(handler);
+        assertTrue(handler.beginSyntheticReset(444));
+
+        ClientboundPingPacket ping = new ClientboundPingPacket(12);
+        ClientboundKeepAlivePacket keepAlive = new ClientboundKeepAlivePacket(34L);
+        ClientboundChunkBatchStartPacket batchStart = new ClientboundChunkBatchStartPacket();
+        ClientboundChunkBatchFinishedPacket batchFinished = new ClientboundChunkBatchFinishedPacket(2);
+
+        assertTrue(channel.writeInbound(ping));
+        assertTrue(channel.writeInbound(keepAlive));
+        assertTrue(channel.writeInbound(batchStart));
+        assertTrue(channel.writeInbound(batchFinished));
+        assertSame(ping, channel.readInbound());
+        assertSame(keepAlive, channel.readInbound());
+        assertSame(batchStart, channel.readInbound());
+        assertSame(batchFinished, channel.readInbound());
+
+        ServerboundPongPacket pong = new ServerboundPongPacket(12);
+        ServerboundKeepAlivePacket response = new ServerboundKeepAlivePacket(34L);
+        ServerboundChunkBatchReceivedPacket batchReceived = new ServerboundChunkBatchReceivedPacket(1.0f);
+        assertTrue(channel.writeOutbound(pong));
+        assertSame(pong, channel.readOutbound());
+        assertTrue(channel.writeOutbound(response));
+        assertSame(response, channel.readOutbound());
+        assertTrue(channel.writeOutbound(batchReceived));
+        assertSame(batchReceived, channel.readOutbound());
+
+        channel.close();
+        channel.finishAndReleaseAll();
+    }
+
+    @Test
+    void replayDoesNotEmitChunkBatchMarkers() {
+        ShiftConfig config = new ShiftConfig();
+        config.dims.put(0, new ShiftConfig.Dim());
+        JavaSessionHook.JavaPacketTransformHandler handler =
+                new JavaSessionHook.JavaPacketTransformHandler(new JavaPacketTransform(config), null, null);
+        EmbeddedChannel channel = new EmbeddedChannel(handler);
+        ReoriginReplayPlan plan = handler.prepareReplayPlan(0, 0, 0, 0, 256);
+
+        handler.replayChunkBatch(channel.pipeline().context(handler), plan, 8);
+        handler.replayEntityBatch(channel.pipeline().context(handler), plan, 8);
+        handler.replayGlobalState(channel.pipeline().context(handler), plan);
+        handler.replayLiveUpdates(channel.pipeline().context(handler), plan, 8);
+
+        Object packet;
+        while ((packet = channel.readInbound()) != null) {
+            assertFalse(packet instanceof ClientboundChunkBatchStartPacket);
+            assertFalse(packet instanceof ClientboundChunkBatchFinishedPacket);
+        }
         assertTrue(plan.complete());
         channel.finishAndReleaseAll();
     }
