@@ -396,6 +396,29 @@ final class JavaSessionHook {
                     super.channelRead(ctx, packet);
                     return;
                 }
+                // A real backend position update is part of the live transition stream.
+                // Keep its raw packet until replay drains so it is transformed exactly once
+                // with the final origin. Synthetic positions are injected downstream via
+                // ctx.fireChannelRead and never re-enter this inbound handler.
+                if ((syntheticResetGate.active() || syntheticResetPendingReplay || activeReplayPlan != null)
+                        && packet instanceof ClientboundPlayerPositionPacket realPosition) {
+                    boolean buffered = false;
+                    if (activeReplayPlan != null) {
+                        buffered = activeReplayPlan.bufferLiveUpdate(realPosition);
+                    } else if (preparingLiveUpdates != null) {
+                        buffered = preparingLiveUpdates.offer(realPosition);
+                    }
+                    if (buffered) return;
+
+                    if (activeReplayPlan != null) activeReplayPlan.abort();
+                    activeReplayPlan = null;
+                    if (preparingLiveUpdates != null) preparingLiveUpdates.clear();
+                    preparingLiveUpdates = null;
+                    cancelReplayTasks();
+                    if (log != null) log.warning("[RealCoords] unable to queue a real player position during re-origin; closing session to avoid stale teleport state");
+                    ctx.close();
+                    return;
+                }
                 if ((syntheticResetGate.active() || activeReplayPlan != null) && isWorldResetPacket(packet)) {
                     if (log != null) log.warning("[RealCoords] unexpected backend login/respawn during live re-origin; closing downstream session");
                     if (activeReplayPlan != null) activeReplayPlan.abort();
