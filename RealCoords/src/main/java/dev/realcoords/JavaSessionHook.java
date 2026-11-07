@@ -173,7 +173,7 @@ final class JavaSessionHook {
         private ScheduledFuture<?> syntheticResetTimeout;
         private ScheduledFuture<?> transitionTimeout;
         private final ReoriginTransition transition = new ReoriginTransition();
-        private final TransitionTimingPolicy timingPolicy = new TransitionTimingPolicy(transform.transitionCooldownTicks(), transform.transitionGraceTicks());
+        private final TransitionTimingPolicy timingPolicy;
         private boolean transitionDisconnectNotified;
         private ScheduledFuture<?> replayBatchTask;
         private ScheduledFuture<?> replayTimeout;
@@ -191,6 +191,7 @@ final class JavaSessionHook {
             this.transform = transform;
             this.geyserSession = geyserSession;
             this.log = log;
+            this.timingPolicy = new TransitionTimingPolicy(transform.transitionCooldownTicks(), transform.transitionGraceTicks());
         }
 
         @Override

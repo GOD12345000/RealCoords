@@ -650,7 +650,7 @@ final class JavaPacketTransform {
             double realZ = move.getZ() + origin.offsetZ();
             lastPlayerY = move.getY();
             hasPlayerPosition = true;
-            if (!acceptMovementPosition(realX, realZ, allowOriginShift)) return null;
+            if (!acceptMovementPosition(realX, realZ, allowOriginShift, jumpLimit)) return null;
             return move.withX(realX).withZ(realZ);
         }
         if (packet instanceof ServerboundMovePlayerPosRotPacket move) {
@@ -660,7 +660,7 @@ final class JavaPacketTransform {
             lastPlayerYaw = move.getYaw();
             lastPlayerPitch = move.getPitch();
             hasPlayerPosition = true;
-            if (!acceptMovementPosition(realX, realZ, allowOriginShift)) return null;
+            if (!acceptMovementPosition(realX, realZ, allowOriginShift, jumpLimit)) return null;
             return move.withX(realX).withZ(realZ);
         }
         return packet;
