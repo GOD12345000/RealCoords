@@ -885,4 +885,63 @@ class JavaSessionHookTest {
         completedField.setLong(policy, completedAtNanos);
     }
 
+    @Test
+    void handlerCooldownPreventsASecondMovingReoriginAfterReplayCompletes() throws Exception {
+        ShiftConfig config = new ShiftConfig();
+        ShiftConfig.Dim dim = new ShiftConfig.Dim();
+        dim.trigger = 1_000;
+        dim.reset = 500;
+        dim.alignment = 256;
+        config.dims.put(0, dim);
+        config.shiftWhileMoving = true;
+        config.cooldownMs = 0;
+        config.transitionCooldownTicks = 600;
+        JavaPacketTransform transform = new JavaPacketTransform(config);
+        JavaSessionHook.JavaPacketTransformHandler handler =
+                new JavaSessionHook.JavaPacketTransformHandler(transform, null, null);
+        EmbeddedChannel channel = new EmbeddedChannel(handler);
+        initializeMovementFixture(channel, transform);
+
+        for (int distance = 0; distance <= 2_048; distance += 256) {
+            int chunkX = (int) Math.floor((23_000_000 + distance) / 16.0);
+            int chunkZ = (int) Math.floor(-17_000_000 / 16.0);
+            channel.writeInbound(new ClientboundLevelChunkWithLightPacket(
+                    chunkX, chunkZ, new byte[]{1}, Map.of(),
+                    new org.geysermc.mcprotocollib.protocol.data.game.level.block.BlockEntityInfo[0],
+                    new org.geysermc.mcprotocollib.protocol.data.game.level.LightUpdateData(
+                            new BitSet(), new BitSet(), new BitSet(), new BitSet(), List.of(), List.of())));
+        }
+        while (channel.readInbound() != null) { }
+
+        assertTrue(handler.beginSyntheticReset(-950));
+        ReoriginReplayPlan plan = handler.prepareReplayPlan(
+                (int) Math.floor(transform.realX() / 16.0),
+                (int) Math.floor(transform.realZ() / 16.0),
+                transform.realX(), transform.realZ(), 256);
+        setTransitionPhase(handler, ReoriginTransition.State.REPLAY);
+        handler.replayChunkBatch(channel.pipeline().context(handler), plan, 256);
+        handler.replayEntityBatch(channel.pipeline().context(handler), plan, 256);
+        handler.replayGlobalState(channel.pipeline().context(handler), plan);
+        handler.replayLiveUpdates(channel.pipeline().context(handler), plan, 256);
+        assertTrue(plan.complete());
+        assertEquals(ReoriginTransition.State.NORMAL, handler.transitionState());
+
+        int originalOffsetX = transform.offsetX();
+        double startX = transform.realX();
+        double realZ = transform.realZ();
+        for (int step = 1; step <= 20; step++) {
+            double nextRealX = startX + step * 60.0;
+            ServerboundMovePlayerPosPacket movement = new ServerboundMovePlayerPosPacket(
+                    true, false, nextRealX - transform.offsetX(), 70, realZ - transform.offsetZ());
+            assertTrue(channel.writeOutbound(movement),
+                    "ordinary movement should still be forwarded during transition cooldown");
+            assertNotNull(channel.readOutbound());
+            assertEquals(ReoriginTransition.State.NORMAL, handler.transitionState(),
+                    "transition cooldown must prevent a second re-origin transaction");
+            assertEquals(originalOffsetX, transform.offsetX(),
+                    "transition cooldown must keep the current origin unchanged");
+        }
+        channel.finishAndReleaseAll();
+    }
+
 }
