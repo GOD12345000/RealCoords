@@ -725,4 +725,23 @@ class JavaPacketTransformTest {
         assertEquals(23_000_000 - transform.offsetX(), shifted.getBlockEntities()[0].getNbt().getInt("x"));
         assertEquals(-17_000_000 - transform.offsetZ(), shifted.getBlockEntities()[0].getNbt().getInt("z"));
     }
+    @Test
+    void transitionGraceCanRelaxTheServerboundJumpGuard() {
+        ShiftConfig strictConfig = new ShiftConfig();
+        strictConfig.dims.put(0, new ShiftConfig.Dim());
+        JavaOriginState strictOrigin = new JavaOriginState(strictConfig);
+        strictOrigin.absolutePosition(0, 0, 10);
+        JavaPacketTransform strict = new JavaPacketTransform(strictOrigin, 64.0, strictConfig);
+        ServerboundMovePlayerPosPacket largeMove = new ServerboundMovePlayerPosPacket(true, false, 1_000, 70, 0);
+        assertNull(strict.serverbound(largeMove, false, false),
+                "outside grace, a movement beyond max-serverbound-jump must still be rejected");
+
+        ShiftConfig graceConfig = new ShiftConfig();
+        graceConfig.dims.put(0, new ShiftConfig.Dim());
+        JavaOriginState graceOrigin = new JavaOriginState(graceConfig);
+        graceOrigin.absolutePosition(0, 0, 10);
+        JavaPacketTransform grace = new JavaPacketTransform(graceOrigin, 64.0, graceConfig);
+        assertNotNull(grace.serverbound(largeMove, false, true),
+                "during transition grace, the same movement must pass the relaxed jump guard");
+    }
 }
