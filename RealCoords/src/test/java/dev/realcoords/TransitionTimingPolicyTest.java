@@ -24,11 +24,11 @@ class TransitionTimingPolicyTest {
         TransitionTimingPolicy policy = new TransitionTimingPolicy(600, 20);
         policy.transitionCompleted(5_000_000_000L);
 
-        assertTrue(policy.cooldownActive(5_999_999_999L));
-        assertFalse(policy.cooldownActive(6_000_000_000L));
+        assertTrue(policy.cooldownActive(34_999_999_999L));
+        assertFalse(policy.cooldownActive(35_000_000_000L));
         assertTrue(policy.graceActive(5_999_999_999L));
         assertFalse(policy.graceActive(6_000_000_000L));
-        assertFalse(policy.safetyGuardRelaxed(false, 6_000_000_000L));
+        assertFalse(policy.safetyGuardRelaxed(false, 35_000_000_000L));
     }
 
     @Test

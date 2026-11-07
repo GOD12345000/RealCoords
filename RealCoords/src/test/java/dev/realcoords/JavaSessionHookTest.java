@@ -667,4 +667,93 @@ class JavaSessionHookTest {
         channel.finishAndReleaseAll();
         return shifted;
     }
+    @Test
+    void walkFallbackKickDisconnectsWhenDeferredLocalCoordinateExceedsEightTimesTrigger() {
+        ShiftConfig config = new ShiftConfig();
+        ShiftConfig.Dim dim = new ShiftConfig.Dim();
+        dim.trigger = 50_000;
+        config.dims.put(0, dim);
+        config.walkFallback = "kick";
+        config.maxJump = 1_000_000;
+        JavaSessionHook.JavaPacketTransformHandler handler =
+                new JavaSessionHook.JavaPacketTransformHandler(new JavaPacketTransform(config), null, null);
+        EmbeddedChannel channel = new EmbeddedChannel(handler);
+        Key world = Key.key("minecraft:overworld");
+        PlayerSpawnInfo spawn = new PlayerSpawnInfo(0, world, 0L, GameMode.SURVIVAL,
+                null, false, false, null, 0, 63);
+        channel.writeInbound(new ClientboundLoginPacket(42, false, new Key[]{world},
+                20, 10, 10, false, true, false, spawn, true, true));
+        channel.writeInbound(new ClientboundPlayerPositionPacket(1, 0, 70, 0, 0, 0, 0, 0, 0));
+        while (channel.readInbound() != null) { }
+        channel.writeInbound(new ClientboundOpenScreenPacket(3, ContainerType.GENERIC_9X3, Component.text("Chest")));
+
+        channel.writeOutbound(new ServerboundMovePlayerPosPacket(true, false, 400_001, 70, 0));
+
+        assertFalse(channel.isOpen(), "kick fallback must disconnect after local coordinate exceeds 8x trigger");
+        channel.finishAndReleaseAll();
+    }
+
+    @Test
+    void walkFallbackNoneKeepsDeferringAndDoesNotStartAReorigin() {
+        ShiftConfig config = new ShiftConfig();
+        ShiftConfig.Dim dim = new ShiftConfig.Dim();
+        dim.trigger = 50_000;
+        config.dims.put(0, dim);
+        config.walkFallback = "none";
+        config.maxJump = 1_000_000;
+        JavaSessionHook.JavaPacketTransformHandler handler =
+                new JavaSessionHook.JavaPacketTransformHandler(new JavaPacketTransform(config), null, null);
+        EmbeddedChannel channel = new EmbeddedChannel(handler);
+        Key world = Key.key("minecraft:overworld");
+        PlayerSpawnInfo spawn = new PlayerSpawnInfo(0, world, 0L, GameMode.SURVIVAL,
+                null, false, false, null, 0, 63);
+        channel.writeInbound(new ClientboundLoginPacket(42, false, new Key[]{world},
+                20, 10, 10, false, true, false, spawn, true, true));
+        channel.writeInbound(new ClientboundPlayerPositionPacket(1, 0, 70, 0, 0, 0, 0, 0, 0));
+        while (channel.readInbound() != null) { }
+        channel.writeInbound(new ClientboundOpenScreenPacket(3, ContainerType.GENERIC_9X3, Component.text("Chest")));
+
+        ServerboundMovePlayerPosPacket movement = new ServerboundMovePlayerPosPacket(true, false, 400_001, 70, 0);
+        channel.writeOutbound(movement);
+
+        assertTrue(channel.isOpen());
+        assertSame(movement, channel.readOutbound(), "none fallback must leave movement and deferral unchanged");
+        assertTrue(handler.deferralState().shouldDefer());
+        assertEquals(ReoriginTransition.State.NORMAL, handler.transitionState());
+        channel.finishAndReleaseAll();
+    }
+
+    @Test
+    void walkFallbackReoriginStartsResetWhenNearbyChunkCacheExists() {
+        ShiftConfig config = new ShiftConfig();
+        ShiftConfig.Dim dim = new ShiftConfig.Dim();
+        dim.trigger = 50_000;
+        config.dims.put(0, dim);
+        config.walkFallback = "reorigin";
+        config.maxJump = 1_000_000;
+        JavaSessionHook.JavaPacketTransformHandler handler =
+                new JavaSessionHook.JavaPacketTransformHandler(new JavaPacketTransform(config), null, null);
+        EmbeddedChannel channel = new EmbeddedChannel(handler);
+        Key world = Key.key("minecraft:overworld");
+        PlayerSpawnInfo spawn = new PlayerSpawnInfo(0, world, 0L, GameMode.SURVIVAL,
+                null, false, false, null, 0, 63);
+        channel.writeInbound(new ClientboundLoginPacket(42, false, new Key[]{world},
+                20, 10, 10, false, true, false, spawn, true, true));
+        channel.writeInbound(new ClientboundPlayerPositionPacket(1, 0, 70, 0, 0, 0, 0, 0, 0));
+        while (channel.readInbound() != null) { }
+        int chunkX = 400_001 / 16;
+        channel.writeInbound(new ClientboundLevelChunkWithLightPacket(chunkX, 0, new byte[]{1}, Map.of(),
+                new org.geysermc.mcprotocollib.protocol.data.game.level.block.BlockEntityInfo[0],
+                new org.geysermc.mcprotocollib.protocol.data.game.level.LightUpdateData(
+                        new BitSet(), new BitSet(), new BitSet(), new BitSet(), List.of(), List.of())));
+        while (channel.readInbound() != null) { }
+        channel.writeInbound(new ClientboundOpenScreenPacket(3, ContainerType.GENERIC_9X3, Component.text("Chest")));
+
+        channel.writeOutbound(new ServerboundMovePlayerPosPacket(true, false, 400_001, 70, 0));
+
+        assertEquals(ReoriginTransition.State.RESET, handler.transitionState());
+        assertTrue(handler.deferralState().shouldDefer(), "the deferral condition remains true until the transition resets the world");
+        channel.close();
+        channel.finishAndReleaseAll();
+    }
 }
