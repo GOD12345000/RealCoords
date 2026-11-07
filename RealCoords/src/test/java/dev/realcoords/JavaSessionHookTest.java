@@ -243,4 +243,129 @@ class JavaSessionHookTest {
         assertTrue(plan.complete());
         channel.finishAndReleaseAll();
     }
+
+    @Test
+    void queuesRealPlayerPositionDuringResetAndReleasesItWithItsOwnTeleportId() {
+        ShiftConfig config = new ShiftConfig();
+        config.dims.put(0, new ShiftConfig.Dim());
+        config.dims.get(0).trigger = 1_000;
+        config.dims.get(0).reset = 500;
+        JavaPacketTransform transform = new JavaPacketTransform(config);
+        JavaSessionHook.JavaPacketTransformHandler handler =
+                new JavaSessionHook.JavaPacketTransformHandler(transform, null, null);
+        EmbeddedChannel channel = new EmbeddedChannel(handler);
+
+        Key world = Key.key("minecraft:overworld");
+        PlayerSpawnInfo spawn = new PlayerSpawnInfo(0, world, 0L, GameMode.SURVIVAL,
+                null, false, false, null, 0, 63);
+        channel.writeInbound(new ClientboundLoginPacket(1, false, new Key[]{world},
+                20, 10, 10, false, true, false, spawn, true, true));
+        channel.writeInbound(new ClientboundPlayerPositionPacket(
+                1, 23_000_000, 70, -17_000_000, 0, 0, 0, 0, 0));
+        while (channel.readInbound() != null) { }
+
+        assertTrue(handler.beginSyntheticReset(-777));
+        ClientboundPlayerPositionPacket realPosition = new ClientboundPlayerPositionPacket(
+                4242, 24_000_000, 71, -17_000_100, 0, 0, 0, 0, 0);
+        channel.writeInbound(realPosition);
+        assertTrue(channel.isOpen(),
+                "real backend player position must be queued during reset, not fail the session closed");
+        assertNull(channel.readInbound(),
+                "real backend player position must be queued during reset, not treated as another reset");
+
+        ServerboundAcceptTeleportationPacket realAck =
+                new ServerboundAcceptTeleportationPacket(4242, 0, 71, 0, 0, 0);
+        assertTrue(channel.writeOutbound(realAck));
+        ServerboundAcceptTeleportationPacket forwardedAck = channel.readOutbound();
+        assertSame(realAck, forwardedAck,
+                "Geyser's acknowledgement for the real teleport must pass through unchanged");
+        assertEquals(4242, forwardedAck.getId());
+
+        ReoriginReplayPlan plan = handler.prepareReplayPlan(0, 0, 0, 0, 256);
+        assertEquals(1, plan.bufferedLiveUpdateCount());
+        handler.replayChunkBatch(channel.pipeline().context(handler), plan, 8);
+        handler.replayEntityBatch(channel.pipeline().context(handler), plan, 8);
+        handler.replayGlobalState(channel.pipeline().context(handler), plan);
+        handler.replayLiveUpdates(channel.pipeline().context(handler), plan, 8);
+
+        ClientboundPlayerPositionPacket released = channel.readInbound();
+        assertNotNull(released, "real player position must be released after replay");
+        assertEquals(4242, released.getId(), "real teleport id must not be replaced by synthetic id");
+        assertNotEquals(24_000_000, released.getPosition().getX(),
+                "queued real position must be transformed with the current origin at release");
+        assertTrue(plan.complete());
+        channel.close();
+        channel.finishAndReleaseAll();
+    }
+
+    @Test
+    void realLoginDuringResetRemainsFailClosed() {
+        ShiftConfig config = new ShiftConfig();
+        config.dims.put(0, new ShiftConfig.Dim());
+        JavaSessionHook.JavaPacketTransformHandler handler =
+                new JavaSessionHook.JavaPacketTransformHandler(new JavaPacketTransform(config), null, null);
+        EmbeddedChannel channel = new EmbeddedChannel(handler);
+        assertTrue(handler.beginSyntheticReset(-778));
+        Key world = Key.key("minecraft:overworld");
+        PlayerSpawnInfo spawn = new PlayerSpawnInfo(0, world, 0L, GameMode.SURVIVAL,
+                null, false, false, null, 0, 63);
+
+        channel.writeInbound(new ClientboundLoginPacket(1, false, new Key[]{world},
+                20, 10, 10, false, true, false, spawn, true, true));
+
+        assertFalse(channel.isOpen(), "real ClientboundLoginPacket during reset must fail closed");
+        channel.finishAndReleaseAll();
+    }
+
+    @Test
+    void realRespawnDuringResetRemainsFailClosed() {
+        ShiftConfig config = new ShiftConfig();
+        config.dims.put(0, new ShiftConfig.Dim());
+        JavaSessionHook.JavaPacketTransformHandler handler =
+                new JavaSessionHook.JavaPacketTransformHandler(new JavaPacketTransform(config), null, null);
+        EmbeddedChannel channel = new EmbeddedChannel(handler);
+        assertTrue(handler.beginSyntheticReset(-779));
+        Key world = Key.key("minecraft:overworld");
+        PlayerSpawnInfo spawn = new PlayerSpawnInfo(0, world, 0L, GameMode.SURVIVAL,
+                null, false, false, null, 0, 63);
+
+        channel.writeInbound(new ClientboundRespawnPacket(spawn, true, true));
+
+        assertFalse(channel.isOpen(), "real ClientboundRespawnPacket during reset must fail closed");
+        channel.finishAndReleaseAll();
+    }
+
+    @Test
+    void syntheticPlayerPositionBypassesTheRealPositionQueue() {
+        ShiftConfig config = new ShiftConfig();
+        config.dims.put(0, new ShiftConfig.Dim());
+        JavaPacketTransform transform = new JavaPacketTransform(config);
+        JavaSessionHook.JavaPacketTransformHandler handler =
+                new JavaSessionHook.JavaPacketTransformHandler(transform, null, null);
+        EmbeddedChannel channel = new EmbeddedChannel(handler);
+
+        Key world = Key.key("minecraft:overworld");
+        PlayerSpawnInfo spawn = new PlayerSpawnInfo(0, world, 0L, GameMode.SURVIVAL,
+                null, false, false, null, 0, 63);
+        channel.writeInbound(new ClientboundLoginPacket(1, false, new Key[]{world},
+                20, 10, 10, false, true, false, spawn, true, true));
+        channel.writeInbound(new ClientboundPlayerPositionPacket(
+                1, 23_000_000, 70, -17_000_000, 0, 0, 0, 0, 0));
+        while (channel.readInbound() != null) { }
+
+        int injected = handler.injectSyntheticReset(channel.pipeline().context(handler), -780);
+        assertEquals(3, injected);
+        assertNotNull(channel.readInbound());
+        assertNotNull(channel.readInbound());
+        ClientboundPlayerPositionPacket syntheticPosition = channel.readInbound();
+        assertNotNull(syntheticPosition);
+        assertEquals(-780, syntheticPosition.getId());
+
+        ReoriginReplayPlan plan = handler.prepareReplayPlan(0, 0, 0, 0, 256);
+        assertEquals(0, plan.bufferedLiveUpdateCount(),
+                "synthetic reset position must never enter the real backend position queue");
+        channel.close();
+        channel.finishAndReleaseAll();
+    }
+
 }
