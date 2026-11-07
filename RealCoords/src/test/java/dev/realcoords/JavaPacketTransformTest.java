@@ -726,22 +726,23 @@ class JavaPacketTransformTest {
         assertEquals(-17_000_000 - transform.offsetZ(), shifted.getBlockEntities()[0].getNbt().getInt("z"));
     }
     @Test
-    void transitionGraceCanRelaxTheServerboundJumpGuard() {
-        ShiftConfig strictConfig = new ShiftConfig();
-        strictConfig.dims.put(0, new ShiftConfig.Dim());
-        JavaOriginState strictOrigin = new JavaOriginState(strictConfig);
-        strictOrigin.absolutePosition(0, 0, 10);
-        JavaPacketTransform strict = new JavaPacketTransform(strictOrigin, 64.0, strictConfig);
-        ServerboundMovePlayerPosPacket largeMove = new ServerboundMovePlayerPosPacket(true, false, 1_000, 70, 0);
-        assertNull(strict.serverbound(largeMove, false, false),
-                "outside grace, a movement beyond max-serverbound-jump must still be rejected");
-
+    void transitionGraceAcceptsOneHundredBlocksButRejectsOffsetScaleJump() {
         ShiftConfig graceConfig = new ShiftConfig();
         graceConfig.dims.put(0, new ShiftConfig.Dim());
-        JavaOriginState graceOrigin = new JavaOriginState(graceConfig);
-        graceOrigin.absolutePosition(0, 0, 10);
-        JavaPacketTransform grace = new JavaPacketTransform(graceOrigin, 64.0, graceConfig);
-        assertNotNull(grace.serverbound(largeMove, false, true),
-                "during transition grace, the same movement must pass the relaxed jump guard");
+        JavaOriginState ordinaryOrigin = new JavaOriginState(graceConfig);
+        ordinaryOrigin.absolutePosition(0, 0, 10);
+        JavaPacketTransform ordinary = new JavaPacketTransform(ordinaryOrigin, 64.0, graceConfig);
+        ServerboundMovePlayerPosPacket oneHundredBlocks =
+                new ServerboundMovePlayerPosPacket(true, false, 100, 70, 0);
+        assertNotNull(ordinary.serverbound(oneHundredBlocks, false, true),
+                "a 100-block movement must fit within the bounded transition grace limit");
+
+        JavaOriginState staleOrigin = new JavaOriginState(graceConfig);
+        staleOrigin.absolutePosition(0, 0, 10);
+        JavaPacketTransform stale = new JavaPacketTransform(staleOrigin, 64.0, graceConfig);
+        ServerboundMovePlayerPosPacket offsetScaleJump =
+                new ServerboundMovePlayerPosPacket(true, false, 50_000, 70, 0);
+        assertNull(stale.serverbound(offsetScaleJump, false, true),
+                "a 50,000-block stale-coordinate jump must be rejected during transition grace");
     }
 }

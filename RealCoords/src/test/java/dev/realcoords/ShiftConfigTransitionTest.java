@@ -60,4 +60,23 @@ class ShiftConfigTransitionTest {
         assertEquals(0, config.transitionCooldownTicks);
         assertEquals(0, config.transitionGraceTicks);
     }
+    @Test
+    void transitionGraceMaxJumpDefaultsTo256AndLoadsConfiguredValue() {
+        ShiftConfig defaults = ShiftConfig.parse(Map.of(
+                "safety", Map.of("max-serverbound-jump", 64.0)), ignored -> {});
+        java.lang.reflect.Field field = java.util.Arrays.stream(ShiftConfig.class.getDeclaredFields())
+                .filter(candidate -> candidate.getName().equals("transitionGraceMaxJump"))
+                .findFirst().orElse(null);
+        assertNotNull(field, "safety.transition-grace-max-jump must have a dedicated config field");
+        field.setAccessible(true);
+        try {
+            assertEquals(256.0, field.getDouble(defaults));
+            ShiftConfig configured = ShiftConfig.parse(Map.of("safety", Map.of(
+                    "max-serverbound-jump", 64.0, "transition-grace-max-jump", 300.0)), ignored -> {});
+            assertEquals(300.0, field.getDouble(configured));
+        } catch (IllegalAccessException exception) {
+            fail(exception);
+        }
+    }
+
 }
