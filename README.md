@@ -2,7 +2,7 @@
 
 **RealCoords** 是一個適用於 Geyser 的 Geyser Extension，目標是改善 Bedrock 玩家在 Java 世界遠距離座標下的客戶端座標精度問題。
 
-> **階段一狀態：可供測試使用（Phase 1 test release）。** Java 協議層浮動原點已通過 CI，並由維護者在 Velocity + Geyser 2.12.1 的實際伺服器環境測試；目前回報在約 X=23,000,000、Z=17,000,000 的遠距離遊玩沒有遇到問題。這是目前測試範圍內的結果，不代表所有版本、封包與玩法均已完整驗證。請先備份世界，並閱讀下方已知限制。連續移動時自動重新設定原點（階段二）尚未完成。
+> **階段一狀態：可供測試使用（Phase 1 test release）。** Java 協議層浮動原點已通過 CI，並由維護者在 Velocity + Geyser 2.12.1 的實際伺服器環境測試；目前回報在約 X=23,000,000、Z=17,000,000 的遠距離遊玩沒有遇到問題。這是目前測試範圍內的結果，不代表所有版本、封包與玩法均已完整驗證。請先備份世界，並閱讀下方已知限制。階段二的連續移動重載雖已有程式與 CI 測試，但尚未經實機驗證，**不建議開啟 `origin-shift.shift-while-moving`**。
 
 English summary: RealCoords is an experimental Geyser extension that shifts Java protocol coordinates before Geyser converts them to floating-point values, keeping Geyser's internal coordinates small while the Java backend retains real world coordinates.
 
@@ -54,7 +54,7 @@ RealCoords 使用每位玩家自己的水平偏移量 offsetX、offsetZ。Y 座�
 3. Geyser translator 因此接收到小座標，避免先將遠距離 double 轉成 float 時產生量化誤差。
 4. **Geyser → Java**：將已支援的玩家移動、方塊互動與編輯封包座標加回偏移量；玩家移動另經過安全跳躍檢查。
 5. Bedrock 輔助 hook 不再平移座標，只負責追蹤小座標並加回偏移量以顯示真實座標 ActionBar、隱藏原版座標規則與合併 Java ActionBar。
-6. `layer: bedrock` 才會啟用舊版完整 Bedrock 層轉換與區塊快取／重送。Java 模式的階段 1 僅在登入、重生／換維度與遠距離傳送等世界重載時機選擇原點；連續移動跨門檻的階段 2 尚未實作。
+6. `layer: bedrock` 才會啟用舊版完整 Bedrock 層轉換與區塊快取／重送。Java 模式的登入、重生／換維度與遠距離傳送會選擇原點；階段二的連續移動重載由 `origin-shift.shift-while-moving` 控制，預設關閉，且尚未經實機驗證，不建議開啟。
 
 此設計的關鍵是：**不能只轉換玩家位置**。區塊、方塊更新、方塊實體 NBT、實體、出生點、聲音、粒子、互動封包等資料，只要含有世界座標，也可能需要套用相同偏移。尚未處理的資料類型會造成顯示或互動位置不一致。
 
@@ -68,7 +68,7 @@ RealCoords 使用每位玩家自己的水平偏移量 offsetX、offsetZ。Y 座�
 | Java 編譯版本 | Java 21 |
 | Gradle | 8.10.2 |
 | 代理平台 | 已在 Velocity 環境確認載入 |
-| Java 後端 | 測試環境使用 1.21.8；不代表已驗證所有後端版本 |
+| Java 後端／協議 | 後端 1.21.8，經 ViaVersion 轉換；Geyser 與 Velocity 之間使用 Geyser 自己的 Java 協議版本。 |
 | Bedrock | 依所安裝 Geyser 版本支援的 Bedrock 版本 |
 
 RealCoords 使用部分 Geyser／Cloudburst 內部類別與封包處理方式，因此 **Geyser 版本更新可能需要修改程式碼**。請勿假設它能跨 Geyser 版本直接相容。
@@ -155,6 +155,7 @@ plugins/Geyser-Velocity/extensions/realcoords/config.yml
 | alignment | 256 | X/Z 偏移量的對齊間隔（格） |
 | recenter-on-reload | 2048 | 登入／重生／維度切換／遠距傳送等免費重載事件的重新置中門檻（格） |
 | trigger-distance | 100000 | 連續移動模式的精度觸發距離（格）；預設值依 float 精度設定 |
+| shift-while-moving | false | 是否啟用階段二連續移動重載；預設關閉，尚未經實機驗證，不建議開啟 |
 | reset-distance | 50000 | 已偏移後，允許重設偏移的距離（格）；必須小於 trigger-distance |
 | cooldown-ticks | 100 | 舊 Bedrock 模式兩次偏移操作之間的冷卻時間 |
 | transition-timeout-ticks | 100 | Java 模式一次 transition 的最長時間 |
@@ -163,6 +164,8 @@ plugins/Geyser-Velocity/extensions/realcoords/config.yml
 | ack-timeout-ticks | 60 | 舊 Bedrock 模式等待客戶端位置確認的逾時時間 |
 | ack-tolerance | 4.0 | 舊 Bedrock 模式確認位置時容許的誤差 |
 | dimensions.*.enabled | true | 個別維度是否啟用 |
+
+**實機驗證提醒：** `origin-shift.shift-while-moving` 預設為 `false`。階段二連續移動重載尚未經實機驗證，即使 CI 通過也不代表 Bedrock／Velocity 整合流程已驗收，現階段不建議開啟。
 
 Minecraft 正常 tick rate 約為每秒 20 ticks；例如 100 ticks 約為 5 秒。觸發與重設距離形成遲滯區間，避免玩家在同一門檻附近反覆切換。登入、重生、維度切換及遠距傳送本來就會使 Geyser 重載世界，因此可使用較小的 `recenter-on-reload` 免費重新置中；連續移動則使用較大的 `trigger-distance`，避免頻繁重載。真實座標仍在 `reset-distance` 範圍內時會保留原本不偏移的行為。Java 模式階段 1 不使用 `cooldown-ticks`、`ack-timeout-ticks` 與 `ack-tolerance`；這三項保留給舊 Bedrock 模式。
 
@@ -314,7 +317,7 @@ Push 到 main、提交 Pull Request，或手動執行 **Actions → Build RealCo
 
 ### 尚未完成的功能與已知限制
 
-1. **階段二：連續移動自動重新設定原點尚未實作**：目前只在登入、重生／換維度及符合條件的遠距離絕對傳送等世界重載時機更新原點。玩家持續步行／飛行跨越門檻時，不會自動完成完整的重新原點流程。
+1. **階段二：連續移動重載尚未經實機驗證**：功能由 `origin-shift.shift-while-moving` 控制，預設關閉。雖然已有程式碼與 CI 測試，但尚未完成 Bedrock／Velocity 實機驗收，現階段不建議開啟。
 2. **階段二的世界狀態重建尚未完成**：目前 Java 模式的 chunk cache 以擷取／保存為主，尚未串接原點切換後的完整區塊重播；合成重設封包、重播批次、完整實體狀態及世界全域狀態恢復仍待實作。
 3. **未完整轉換的封包**：Java 模式目前只改寫已明確支援的封包。尚未處理的絕對座標封包與部分特殊封包，可能在偏移狀態下錯位；地圖圖示座標是 map-local，刻意不套用世界原點偏移。login／respawn 的 `lastDeathPos` 會在原點確定後更新 Geyser 內部 metadata，但若死亡標記與玩家相距過遠，仍可能超出本地座標範圍並產生警告。命令方塊、結構方塊與拼圖方塊位置已加入轉換，但仍需實機核對。
 4. **Geyser 浮點精度與其他版本相容性**：目前測試環境已回報遠距離遊玩正常，但仍需在更多 Geyser／Bedrock／Java 版本組合確認。
