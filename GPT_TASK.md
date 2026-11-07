@@ -114,7 +114,7 @@ Java 伺服器在這些時機本來就會重送所有區塊與實體，Geyser �
 
 ## 5. 必須轉換的封包（清單需對照原始碼補完）
 
-> 類別名稱來自 MCProtocolLib（Geyser 分支）的 1.21.8 協議。**請以實際原始碼為準**，下表只是起點。
+> 後端 1.21.8，經 ViaVersion 轉換；Geyser 與 Velocity 之間使用 Geyser 自己的 Java 協議版本。 下表的封包類別名稱請以專案實際解析的 MCProtocolLib／Geyser 原始碼為準。
 > 對 Geyser 的 `translator/protocol/java/**` 全部 grep 一遍（找 `getPosition`、`BlockPos`、`Vector3`、
 > `getX()/getZ()`、`chunkX/chunkZ`、`GlobalPos`），凡是帶世界座標的封包都要進表；
 > 暫時不支援的要在日誌提示一次（沿用現有 `WATCH` 機制）。
