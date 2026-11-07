@@ -162,6 +162,7 @@ final class JavaSessionHook {
         private ScheduledFuture<?> replayBatchTask;
         private ScheduledFuture<?> replayTimeout;
         private ReoriginReplayPlan activeReplayPlan;
+        private LiveUpdateBuffer preparingLiveUpdates;
         private boolean syntheticResetPendingReplay;
         private long bedrockSpawnWaitDeadlineMs;
         private int nextSyntheticTeleportId = Integer.MIN_VALUE;
@@ -197,6 +198,7 @@ final class JavaSessionHook {
             }
             if (activeReplayPlan != null || syntheticResetPendingReplay) return false;
             if (!syntheticResetGate.begin(reservedTeleportId, 2)) return false;
+            preparingLiveUpdates = new LiveUpdateBuffer(transform.liveUpdateBudgetBytes(), 4096);
             cancelSyntheticResetTimeout();
             syntheticResetTimeout = ctx.executor().schedule(() -> {
                 if (log != null) log.warning("[RealCoords] synthetic reset acknowledgement timed out; closing downstream session to prevent synthetic packet leakage");
@@ -209,6 +211,8 @@ final class JavaSessionHook {
             boolean wasActive = syntheticResetGate.active();
             syntheticResetGate.abort();
             syntheticResetPendingReplay = false;
+            if (preparingLiveUpdates != null) preparingLiveUpdates.clear();
+            preparingLiveUpdates = null;
             cancelSyntheticResetTimeout();
             // Once synthetic packets have entered Geyser, a timeout/abort must not
             // release a late acknowledgement to the real Java server.
@@ -247,8 +251,13 @@ final class JavaSessionHook {
             if (activeReplayPlan != null) throw new IllegalStateException("A replay plan is already active");
             JavaPacketTransform.ReplaySnapshot snapshot = transform.prepareReplaySnapshot(
                     centerChunkX, centerChunkZ, centerX, centerZ, entityRadius);
+            LiveUpdateBuffer liveUpdates = preparingLiveUpdates;
+            if (liveUpdates == null) {
+                liveUpdates = new LiveUpdateBuffer(transform.liveUpdateBudgetBytes(), 4096);
+            }
+            preparingLiveUpdates = null;
             activeReplayPlan = new ReoriginReplayPlan(snapshot.chunks(), snapshot.entities(), snapshot.globalState(),
-                    new LiveUpdateBuffer(transform.liveUpdateBudgetBytes(), 4096));
+                    liveUpdates);
             return activeReplayPlan;
         }
 
@@ -391,13 +400,30 @@ final class JavaSessionHook {
                     ctx.close();
                     return;
                 }
-                if (activeReplayPlan != null && isReplaySensitive(packet)) {
-                    if (packet instanceof MinecraftPacket minecraftPacket
-                            && activeReplayPlan.bufferLiveUpdate(minecraftPacket)) {
-                        return;
+                if ((syntheticResetGate.active() || syntheticResetPendingReplay || activeReplayPlan != null)
+                        && isReplaySensitive(packet)) {
+                    boolean cachedAtArrival = false;
+                    try {
+                        transform.clientbound(packet);
+                        transform.takeOriginChange();
+                        cachedAtArrival = true;
+                    } catch (RuntimeException exception) {
+                        if (log != null) log.error("[RealCoords] unable to observe a live world update during PREPARE/REPLAY", exception);
                     }
+                    boolean buffered = false;
+                    if (cachedAtArrival && packet instanceof MinecraftPacket minecraftPacket) {
+                        if (activeReplayPlan != null) {
+                            buffered = activeReplayPlan.bufferLiveUpdate(minecraftPacket);
+                        } else if (preparingLiveUpdates != null) {
+                            buffered = preparingLiveUpdates.offer(minecraftPacket);
+                        }
+                    }
+                    if (buffered) return;
                     if (activeReplayPlan != null) activeReplayPlan.abort();
                     activeReplayPlan = null;
+                    if (preparingLiveUpdates != null) preparingLiveUpdates.clear();
+                    preparingLiveUpdates = null;
+                    cancelReplayTasks();
                     if (log != null) log.warning("[RealCoords] live world update buffer overflowed or could not snapshot a packet; closing session to avoid stale replay state");
                     ctx.close();
                     return;
@@ -517,6 +543,7 @@ final class JavaSessionHook {
             if (plan != activeReplayPlan || !plan.complete()) return;
             activeReplayPlan = null;
             syntheticResetPendingReplay = false;
+            preparingLiveUpdates = null;
             bedrockSpawnWaitDeadlineMs = 0;
             cancelReplayTasks();
             if (log != null) log.info("[RealCoords] live re-origin replay completed; movement unfrozen");

@@ -918,9 +918,14 @@ final class JavaPacketTransform {
     List<Packet> replayBufferedUpdates(List<LiveUpdateBuffer.BufferedPacket> updates) {
         if (updates.isEmpty()) return List.of();
         List<Packet> replay = new ArrayList<>(updates.size());
-        for (LiveUpdateBuffer.BufferedPacket buffered : updates) {
-            MinecraftPacket packet = JavaPacketSnapshot.deserialize(buffered.packetType(), buffered.payload());
-            replay.add(clientbound(packet));
+        replayingCachedPackets = true;
+        try {
+            for (LiveUpdateBuffer.BufferedPacket buffered : updates) {
+                MinecraftPacket packet = JavaPacketSnapshot.deserialize(buffered.packetType(), buffered.payload());
+                replay.add(clientbound(packet));
+            }
+        } finally {
+            replayingCachedPackets = false;
         }
         return List.copyOf(replay);
     }
