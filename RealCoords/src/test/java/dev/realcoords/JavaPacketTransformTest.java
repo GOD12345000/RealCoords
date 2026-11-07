@@ -727,6 +727,16 @@ class JavaPacketTransformTest {
     }
     @Test
     void transitionGraceAcceptsOneHundredBlocksButRejectsOffsetScaleJump() {
+        ShiftConfig strictConfig = new ShiftConfig();
+        strictConfig.dims.put(0, new ShiftConfig.Dim());
+        JavaOriginState strictOrigin = new JavaOriginState(strictConfig);
+        strictOrigin.absolutePosition(0, 0, 10);
+        JavaPacketTransform strict = new JavaPacketTransform(strictOrigin, 64.0, strictConfig);
+        ServerboundMovePlayerPosPacket strictJump =
+                new ServerboundMovePlayerPosPacket(true, false, 100, 70, 0);
+        assertNull(strict.serverbound(strictJump, false, false),
+                "outside transition grace, movement beyond max-serverbound-jump must remain rejected");
+
         ShiftConfig graceConfig = new ShiftConfig();
         graceConfig.dims.put(0, new ShiftConfig.Dim());
         JavaOriginState ordinaryOrigin = new JavaOriginState(graceConfig);
