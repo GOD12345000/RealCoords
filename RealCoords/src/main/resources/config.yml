@@ -24,7 +24,7 @@ origin-shift:
   transition-timeout-ticks: 100
   # 兩次 transition 之間的最短間隔，單位為 tick
   transition-cooldown-ticks: 600
-  # transition 結束後放寬座標跳躍防呆閘的寬限期，單位為 tick
+  # transition 結束後使用 transition-grace-max-jump 有上限放寬的寬限期，單位為 tick
   transition-grace-ticks: 20
   # 延後 transition 超過 trigger-distance 的 8 倍時：none（不處理）、kick（踢出）、reorigin（嘗試重新置中）
   walk-fallback: none

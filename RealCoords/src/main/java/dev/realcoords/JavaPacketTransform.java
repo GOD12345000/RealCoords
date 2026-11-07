@@ -725,7 +725,8 @@ final class JavaPacketTransform {
     }
 
     double transitionGraceMaxJump() {
-        return config == null ? Math.max(256.0, maxServerboundJump) : config.transitionGraceMaxJump;
+        return config == null ? Math.max(256.0, maxServerboundJump)
+                : Math.max(config.transitionGraceMaxJump, maxServerboundJump);
     }
 
     private boolean acceptMovementPosition(double realX, double realZ, boolean allowOriginShift, double jumpLimit) {

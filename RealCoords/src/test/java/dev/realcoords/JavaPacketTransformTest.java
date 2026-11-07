@@ -755,4 +755,30 @@ class JavaPacketTransformTest {
         assertNull(stale.serverbound(offsetScaleJump, false, true),
                 "a 50,000-block stale-coordinate jump must be rejected during transition grace");
     }
+    @Test
+    void rejectedTransitionJumpReportsMeasuredDistanceAndFiniteLimit() {
+        ShiftConfig config = new ShiftConfig();
+        config.dims.put(0, new ShiftConfig.Dim());
+        config.transitionGraceMaxJump = 256.0;
+        JavaOriginState origin = new JavaOriginState(config);
+        origin.absolutePosition(0, 0, 10);
+        JavaPacketTransform transform = new JavaPacketTransform(origin, 64.0, config);
+
+        ServerboundMovePlayerPosPacket stale = new ServerboundMovePlayerPosPacket(
+                true, false, 50_000, 70, 0);
+        assertNull(transform.serverbound(stale, false, 256.0));
+        JavaPacketTransform.MovementRejection rejection = transform.takeMovementRejection();
+        assertNotNull(rejection);
+        assertEquals(50_000.0, rejection.distance(), 0.001);
+        assertEquals(256.0, rejection.limit());
+    }
+
+    @Test
+    void programmaticConfigCannotMakeTransitionLimitSmallerThanNormalLimit() {
+        ShiftConfig config = new ShiftConfig();
+        config.maxJump = 512.0;
+        JavaPacketTransform transform = new JavaPacketTransform(config);
+        assertEquals(512.0, transform.transitionGraceMaxJump());
+    }
+
 }
