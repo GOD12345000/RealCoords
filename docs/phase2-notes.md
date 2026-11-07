@@ -11,7 +11,9 @@ The deferral state is owned by each `JavaPacketTransformHandler` instance. Its o
 
 No `GeyserSession` state is read to decide whether a transition is safe. The Geyser tick event loop is used elsewhere for Geyser-owned metadata updates, but it is not the owner of this deferral state and must not read or mutate it.
 
-## State source map (MCProtocolLib 1.21.8 packet family)
+## State source map
+
+後端 1.21.8，經 ViaVersion 轉換；Geyser 與 Velocity 之間使用 Geyser 自己的 Java 協議版本。
 
 | State | Source packet | Field / interpretation | Update |
 |---|---|---|---|
