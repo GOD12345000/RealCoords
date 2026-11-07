@@ -6,7 +6,7 @@ final class TransitionDeferralState {
     private int ridingVehicleId = Integer.MIN_VALUE;
     private boolean containerOpen;
     private boolean sleeping;
-    private boolean gliding;
+    private boolean gliding;\n    private boolean observationUnavailable;
 
     void initialize(int entityId) {
         selfEntityId = entityId;
@@ -37,9 +37,9 @@ final class TransitionDeferralState {
         }
     }
 
-    void markObservationUnavailable() { }
+    void markObservationUnavailable() { observationUnavailable = true; }
 
-    boolean shouldDefer() { return containerOpen || isRiding() || sleeping || gliding; }
+    boolean shouldDefer() { return observationUnavailable || containerOpen || isRiding() || sleeping || gliding; }
     int selfEntityId() { return selfEntityId; }
     boolean isContainerOpen() { return containerOpen; }
     boolean isRiding() { return ridingVehicleId != Integer.MIN_VALUE; }

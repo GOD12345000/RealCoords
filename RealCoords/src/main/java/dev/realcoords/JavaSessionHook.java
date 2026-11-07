@@ -20,6 +20,14 @@ import org.geysermc.mcprotocollib.network.event.session.PacketSendingEvent;
 import org.geysermc.mcprotocollib.network.event.session.SessionListener;
 import org.geysermc.mcprotocollib.network.packet.Packet;
 import org.geysermc.mcprotocollib.protocol.codec.MinecraftPacket;
+import org.geysermc.mcprotocollib.protocol.data.game.entity.metadata.EntityMetadata;
+import org.geysermc.mcprotocollib.protocol.data.game.entity.metadata.Pose;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.ClientboundLoginPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.ClientboundRespawnPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundSetEntityDataPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundSetPassengersPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.inventory.ClientboundContainerClosePacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.inventory.ClientboundOpenScreenPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.player.ClientboundPlayerPositionPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.level.ServerboundAcceptTeleportationPacket;
 
@@ -490,44 +498,41 @@ final class JavaSessionHook {
         }
 
         private void observeDeferralPacket(Packet packet) {
-            if (channelContext != null && !channelContext.executor().inEventLoop()) {
+            if (!channelContext.executor().inEventLoop()) {
                 throw new IllegalStateException("deferral state accessed outside the Java handler event loop");
             }
-            String name = packet.getClass().getSimpleName();
-            try {
-                if (name.equals("ClientboundLoginPacket")) {
-                    Object entityId = packet.getClass().getMethod("getEntityId").invoke(packet);
-                    if (entityId instanceof Number number) deferralState.initialize(number.intValue());
-                } else if (name.equals("ClientboundRespawnPacket")) {
-                    deferralState.resetForRespawn();
-                } else if (name.equals("ClientboundOpenScreenPacket")
-                        || name.equals("ClientboundOpenHorseScreenPacket")) {
-                    deferralState.observeContainerOpened();
-                } else if (name.equals("ClientboundContainerClosePacket")) {
-                    deferralState.observeContainerClosed();
-                } else if (name.equals("ClientboundSetPassengersPacket")) {
-                    Object vehicle = packet.getClass().getMethod("getEntityId").invoke(packet);
-                    Object passengers = packet.getClass().getMethod("getPassengerIds").invoke(packet);
-                    if (vehicle instanceof Number v && passengers instanceof int[] ids) {
-                        deferralState.observePassengers(v.intValue(), ids);
+            if (packet instanceof ClientboundLoginPacket login) {
+                deferralState.initialize(login.getEntityId());
+            } else if (packet instanceof ClientboundRespawnPacket) {
+                // In 1.21.8, a dimension change is represented by Respawn.
+                deferralState.resetForRespawn();
+            } else if (packet instanceof ClientboundOpenScreenPacket) {
+                deferralState.observeContainerOpened();
+            } else if (packet instanceof ClientboundContainerClosePacket) {
+                deferralState.observeContainerClosed();
+            } else if (packet instanceof ClientboundSetPassengersPacket passengers) {
+                deferralState.observePassengers(passengers.getEntityId(), passengers.getPassengerIds());
+            } else if (packet instanceof ClientboundSetEntityDataPacket entityData) {
+                for (EntityMetadata<?, ?> metadata : entityData.getMetadata()) {
+                    if (metadata == null) {
+                        deferralState.markObservationUnavailable();
+                        continue;
                     }
-                } else if (name.equals("ClientboundSetEntityDataPacket")) {
-                    Object entity = packet.getClass().getMethod("getEntityId").invoke(packet);
-                    Object metadata = packet.getClass().getMethod("getMetadata").invoke(packet);
-                    if (entity instanceof Number e && metadata instanceof Object[] entries) {
-                        for (Object entry : entries) {
-                            if (entry == null) continue;
-                            Object id = entry.getClass().getMethod("getId").invoke(entry);
-                            Object value = entry.getClass().getMethod("getValue").invoke(entry);
-                            if (id instanceof Number metadataId) {
-                                deferralState.observePlayerMetadata(e.intValue(), metadataId.intValue(), value);
-                            }
+                    Object value = metadata.getValue();
+                    if (metadata.getId() == 6) {
+                        if (value instanceof Pose pose) {
+                            deferralState.observePlayerMetadata(entityData.getEntityId(), 6, pose);
+                        } else {
+                            deferralState.markObservationUnavailable();
+                        }
+                    } else if (metadata.getId() == 0) {
+                        if (value instanceof Byte flags) {
+                            deferralState.observePlayerMetadata(entityData.getEntityId(), 0, flags);
+                        } else {
+                            deferralState.markObservationUnavailable();
                         }
                     }
                 }
-            } catch (ReflectiveOperationException | RuntimeException exception) {
-                if (log != null) log.warning("[RealCoords] unable to observe deferral packet "
-                        + name + ": " + exception.getClass().getSimpleName());
             }
         }
 
