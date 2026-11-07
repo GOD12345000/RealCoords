@@ -1,9 +1,9 @@
 package dev.realcoords;
 
-/** Monotonic per-session timing windows for live re-origin transitions. */
 final class TransitionTimingPolicy {
     private final long cooldownNanos;
     private final long graceNanos;
+    private long lastTransitionCompletedNanos = Long.MIN_VALUE;
 
     TransitionTimingPolicy(int cooldownTicks, int graceTicks) {
         cooldownNanos = Math.max(0, cooldownTicks) * 50_000_000L;
@@ -11,17 +11,20 @@ final class TransitionTimingPolicy {
     }
 
     void transitionCompleted(long nowNanos) {
+        lastTransitionCompletedNanos = nowNanos;
     }
 
     boolean cooldownActive(long nowNanos) {
-        return false;
+        return lastTransitionCompletedNanos != Long.MIN_VALUE
+                && nowNanos - lastTransitionCompletedNanos < cooldownNanos;
     }
 
     boolean graceActive(long nowNanos) {
-        return false;
+        return lastTransitionCompletedNanos != Long.MIN_VALUE
+                && nowNanos - lastTransitionCompletedNanos < graceNanos;
     }
 
     boolean safetyGuardRelaxed(boolean transitionActive, long nowNanos) {
-        return transitionActive;
+        return transitionActive || graceActive(nowNanos);
     }
 }

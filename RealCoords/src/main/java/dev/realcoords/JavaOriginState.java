@@ -163,6 +163,28 @@ final class JavaOriginState {
         return lastZ;
     }
 
+    int triggerDistance() {
+        return config.dim(dimension).trigger;
+    }
+
+    Snapshot forceMovementOrigin(double realX, double realZ) {
+        int oldX = offsetX;
+        int oldZ = offsetZ;
+        ShiftConfig.Dim dim = config.dim(dimension);
+        if (!dim.enabled) return new Snapshot(offsetX, offsetZ, false, hasPosition);
+        offsetX = aligned(realX, dim.alignment);
+        offsetZ = aligned(realZ, dim.alignment);
+        lastX = realX;
+        lastZ = realZ;
+        hasPosition = true;
+        needsAbsoluteX = false;
+        needsAbsoluteZ = false;
+        resetPending = false;
+        publishOffsets();
+        dimensionOffsets.put(dimension, new Offsets(offsetX, offsetZ));
+        return new Snapshot(offsetX, offsetZ, oldX != offsetX || oldZ != offsetZ, true);
+    }
+
     boolean hasPosition() {
         return hasPosition;
     }

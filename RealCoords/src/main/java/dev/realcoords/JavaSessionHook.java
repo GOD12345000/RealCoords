@@ -173,6 +173,7 @@ final class JavaSessionHook {
         private ScheduledFuture<?> syntheticResetTimeout;
         private ScheduledFuture<?> transitionTimeout;
         private final ReoriginTransition transition = new ReoriginTransition();
+        private final TransitionTimingPolicy timingPolicy = new TransitionTimingPolicy(transform.transitionCooldownTicks(), transform.transitionGraceTicks());
         private boolean transitionDisconnectNotified;
         private ScheduledFuture<?> replayBatchTask;
         private ScheduledFuture<?> replayTimeout;
@@ -224,9 +225,22 @@ final class JavaSessionHook {
             transitionTimeout = ctx.executor().schedule(() -> failTransition(ctx, "transition timed out during " + transition.state()), timeoutMillis, TimeUnit.MILLISECONDS);
         }
 
+        private void dispatchDisconnect(ChannelHandlerContext ctx, String message) {
+            if (geyserSession == null || transitionDisconnectNotified) {
+                if (ctx != null) ctx.close();
+                return;
+            }
+            transitionDisconnectNotified = true;
+            geyserSession.getTickEventLoop().execute(() -> {
+                // Start the explicit Bedrock disconnect before closing the Java channel.
+                geyserSession.disconnect(Component.text(message));
+                if (ctx != null) ctx.executor().execute(ctx::close);
+            });
+        }
+
         private void failTransition(ChannelHandlerContext ctx, String reason) {
             if (transition.state() == ReoriginTransition.State.NORMAL || transition.state() == ReoriginTransition.State.FAILED) {
-                if (ctx != null) ctx.close();
+                dispatchDisconnect(ctx, "RealCoords could not safely complete the coordinate transition. Please reconnect.");
                 return;
             }
             transition.fail(reason);
@@ -241,11 +255,7 @@ final class JavaSessionHook {
             cancelReplayTasks();
             bedrockSpawnWaitDeadlineMs = 0;
             if (log != null) log.error("[RealCoords] transition failed at " + transition.failure().failedAt() + ": " + transition.failure().reason());
-            if (ctx != null) ctx.close();
-            if (geyserSession != null && !transitionDisconnectNotified) {
-                transitionDisconnectNotified = true;
-                geyserSession.getTickEventLoop().execute(() -> geyserSession.disconnect(Component.text("RealCoords could not safely complete the coordinate transition. Please reconnect.")));
-            }
+            dispatchDisconnect(ctx, "RealCoords could not safely complete the coordinate transition. Please reconnect.");
         }
 
 
@@ -695,6 +705,7 @@ final class JavaSessionHook {
             bedrockSpawnWaitDeadlineMs = 0;
             cancelReplayTasks();
             cancelTransitionTimeout();
+            timingPolicy.transitionCompleted(System.nanoTime());
             if (transition.state() == ReoriginTransition.State.REPLAY) transition.enter(ReoriginTransition.State.DRAIN);
             if (transition.state() == ReoriginTransition.State.DRAIN) transition.enter(ReoriginTransition.State.NORMAL);
             if (log != null) log.info("[RealCoords] live re-origin replay completed; movement unfrozen");
@@ -782,7 +793,32 @@ final class JavaSessionHook {
                     promise.setSuccess();
                     return;
                 }
-                Packet transformed = transform.serverbound(packet, !deferralState.shouldDefer());
+                if (deferralState.shouldDefer() && isMovementPacket(packet)) {
+                    TransitionWalkFallback.Action fallback = transform.deferredWalkFallback(packet);
+                    if (fallback == TransitionWalkFallback.Action.KICK) {
+                        promise.setSuccess();
+                        dispatchDisconnect(ctx, "RealCoords cannot safely defer re-origin while you continue walking. Please reconnect.");
+                        return;
+                    }
+                    if (fallback == TransitionWalkFallback.Action.REORIGIN) {
+                        promise.setSuccess();
+                        if (!transform.forceDeferredReorigin(packet)) {
+                            dispatchDisconnect(ctx, "RealCoords could not safely rebuild the nearby world. Please reconnect.");
+                            return;
+                        }
+                        int forcedTeleportId = allocateSyntheticTeleportId();
+                        if (injectSyntheticReset(ctx, forcedTeleportId) == 0) {
+                            failTransition(ctx, "walk-fallback reorigin could not start replay");
+                        }
+                        return;
+                    }
+                }
+                long nowNanos = System.nanoTime();
+                boolean transitionActive = transition.state() != ReoriginTransition.State.NORMAL
+                        && transition.state() != ReoriginTransition.State.FAILED;
+                boolean relaxGuard = timingPolicy.safetyGuardRelaxed(transitionActive, nowNanos);
+                boolean allowOriginShift = !deferralState.shouldDefer() && !timingPolicy.cooldownActive(nowNanos);
+                Packet transformed = transform.serverbound(packet, allowOriginShift, relaxGuard);
                 JavaOriginState.Snapshot movementOriginChange = transform.takeOriginChange();
                 if (movementOriginChange != null && movementOriginChange.changed()) {
                     promise.setSuccess();
