@@ -392,6 +392,10 @@ final class JavaSessionHook {
                 if (log != null) log.info("[RealCoords] Java hook first clientbound packet: " + packet.getClass().getName());
             }
             if (message instanceof Packet packet) {
+                if (isImmediatePassThroughPacket(packet)) {
+                    super.channelRead(ctx, packet);
+                    return;
+                }
                 if ((syntheticResetGate.active() || activeReplayPlan != null) && isWorldResetPacket(packet)) {
                     if (log != null) log.warning("[RealCoords] unexpected backend login/respawn during live re-origin; closing downstream session");
                     if (activeReplayPlan != null) activeReplayPlan.abort();
@@ -558,6 +562,17 @@ final class JavaSessionHook {
             if (timeout != null) timeout.cancel(false);
         }
 
+        private static boolean isImmediatePassThroughPacket(Packet packet) {
+            String name = packet.getClass().getSimpleName();
+            return name.equals("ClientboundPingPacket")
+                    || name.equals("ClientboundKeepAlivePacket")
+                    || name.equals("ClientboundChunkBatchStartPacket")
+                    || name.equals("ClientboundChunkBatchFinishedPacket")
+                    || name.equals("ServerboundPongPacket")
+                    || name.equals("ServerboundKeepAlivePacket")
+                    || name.equals("ServerboundChunkBatchReceivedPacket");
+        }
+
         private static boolean isMovementPacket(Packet packet) {
             String name = packet.getClass().getSimpleName();
             return name.startsWith("ServerboundMovePlayer")
@@ -589,6 +604,10 @@ final class JavaSessionHook {
                 if (log != null) log.info("[RealCoords] Java hook first serverbound packet: " + packet.getClass().getName());
             }
             if (message instanceof Packet packet) {
+                if (isImmediatePassThroughPacket(packet)) {
+                    super.write(ctx, packet, promise);
+                    return;
+                }
                 if (syntheticResetGate.shouldSuppress(packet)) {
                     if (!syntheticResetGate.active()) {
                         cancelSyntheticResetTimeout();
