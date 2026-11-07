@@ -18,7 +18,7 @@ class TransitionDeferralStateTest {
     @Test
     void startsClearAndInitializesOnlyThePlayersOwnEntityId() {
         TransitionDeferralState state = new TransitionDeferralState();
-        assertFalse(state.shouldDefer());
+        assertTrue(state.shouldDefer(), "unknown state before Login must be treated conservatively");
         state.initialize(42);
         assertEquals(42, state.selfEntityId());
         assertFalse(state.shouldDefer());
