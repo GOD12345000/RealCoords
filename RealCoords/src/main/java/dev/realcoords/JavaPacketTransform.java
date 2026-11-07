@@ -102,7 +102,8 @@ import java.util.List;
  * pass through unchanged and must be reviewed before they are considered supported.
  */
 final class JavaPacketTransform {
-    record MovementRejection(double distance, double limit) {
+    record MovementRejection(double distance, double limit) { }
+
     private final JavaOriginState origin;
     private int viewDistanceChunks = 10;
     private final double maxServerboundJump;

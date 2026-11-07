@@ -914,6 +914,9 @@ class JavaSessionHookTest {
         while (channel.readInbound() != null) { }
 
         assertTrue(handler.beginSyntheticReset(-950));
+        assertFalse(channel.writeOutbound(ServerboundPlayerLoadedPacket.INSTANCE));
+        assertFalse(channel.writeOutbound(ServerboundPlayerLoadedPacket.INSTANCE));
+        assertFalse(channel.writeOutbound(new ServerboundAcceptTeleportationPacket(-950, 0, 70, 0, 0, 0)));
         ReoriginReplayPlan plan = handler.prepareReplayPlan(
                 (int) Math.floor(transform.realX() / 16.0),
                 (int) Math.floor(transform.realZ() / 16.0),
