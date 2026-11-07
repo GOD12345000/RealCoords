@@ -5,6 +5,7 @@ import io.netty.channel.ChannelDuplexHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPipeline;
 import io.netty.channel.ChannelPromise;
+import net.kyori.adventure.text.Component;
 import io.netty.util.concurrent.ScheduledFuture;
 import org.geysermc.geyser.api.extension.ExtensionLogger;
 import org.geysermc.geyser.session.DownstreamSession;
@@ -170,6 +171,9 @@ final class JavaSessionHook {
         private final TransitionDeferralState deferralState = new TransitionDeferralState();
         private ChannelHandlerContext channelContext;
         private ScheduledFuture<?> syntheticResetTimeout;
+        private ScheduledFuture<?> transitionTimeout;
+        private final ReoriginTransition transition = new ReoriginTransition();
+        private boolean transitionDisconnectNotified;
         private ScheduledFuture<?> replayBatchTask;
         private ScheduledFuture<?> replayTimeout;
         private ReoriginReplayPlan activeReplayPlan;
@@ -204,9 +208,46 @@ final class JavaSessionHook {
 
         TransitionDeferralState deferralState() { return deferralState; }
 
-        ReoriginTransition.State transitionState() { return ReoriginTransition.State.NORMAL; }
+        private void cancelTransitionTimeout() {
+            ScheduledFuture<?> timeout = transitionTimeout;
+            transitionTimeout = null;
+            if (timeout != null) timeout.cancel(false);
+        }
 
-        ReoriginTransition.Failure transitionFailure() { return null; }
+        private void scheduleTransitionTimeout(ChannelHandlerContext ctx) {
+            cancelTransitionTimeout();
+            long timeoutMillis = Math.max(1L, transform.transitionTimeoutMillis());
+            transitionTimeout = ctx.executor().schedule(() -> failTransition(ctx, "transition timed out during " + transition.state()), timeoutMillis, TimeUnit.MILLISECONDS);
+        }
+
+        private void failTransition(ChannelHandlerContext ctx, String reason) {
+            if (transition.state() == ReoriginTransition.State.NORMAL || transition.state() == ReoriginTransition.State.FAILED) {
+                if (ctx != null) ctx.close();
+                return;
+            }
+            transition.fail(reason);
+            cancelTransitionTimeout();
+            cancelSyntheticResetTimeout();
+            syntheticResetGate.abort();
+            syntheticResetPendingReplay = false;
+            if (preparingLiveUpdates != null) preparingLiveUpdates.clear();
+            preparingLiveUpdates = null;
+            if (activeReplayPlan != null) activeReplayPlan.abort();
+            activeReplayPlan = null;
+            cancelReplayTasks();
+            bedrockSpawnWaitDeadlineMs = 0;
+            if (log != null) log.error("[RealCoords] transition failed at " + transition.failure().failedAt() + ": " + transition.failure().reason());
+            if (ctx != null) ctx.close();
+            if (geyserSession != null && !transitionDisconnectNotified) {
+                transitionDisconnectNotified = true;
+                geyserSession.getTickEventLoop().execute(() -> geyserSession.disconnect(Component.text("RealCoords could not safely complete the coordinate transition. Please reconnect.")));
+            }
+        }
+
+
+        ReoriginTransition.State transitionState() { return transition.state(); }
+
+        ReoriginTransition.Failure transitionFailure() { return transition.failure(); }
 
         boolean beginSyntheticReset(int reservedTeleportId) {
             ChannelHandlerContext ctx = channelContext;
