@@ -759,6 +759,10 @@ final class JavaPacketTransform {
         return (int) Math.min(120_000L, Math.max(30_000L, estimate));
     }
 
+    int transitionTimeoutMillis() {
+        return config == null ? 5000 : Math.max(1, config.transitionTimeoutTicks) * 50;
+    }
+
     int syntheticAckTimeoutMillis() {
         return config == null ? 3000 : Math.max(250, config.ackTimeoutMs);
     }

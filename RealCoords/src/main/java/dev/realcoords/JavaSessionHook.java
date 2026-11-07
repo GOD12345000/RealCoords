@@ -199,6 +199,10 @@ final class JavaSessionHook {
 
         @Override
         public void handlerRemoved(ChannelHandlerContext ctx) {
+            if (transition.state() != ReoriginTransition.State.NORMAL && transition.state() != ReoriginTransition.State.FAILED) {
+                transition.fail("handler removed during transition");
+            }
+            cancelTransitionTimeout();
             abortSyntheticReset();
             if (activeReplayPlan != null) activeReplayPlan.abort();
             activeReplayPlan = null;
@@ -256,6 +260,9 @@ final class JavaSessionHook {
             }
             if (activeReplayPlan != null || syntheticResetPendingReplay) return false;
             if (!syntheticResetGate.begin(reservedTeleportId, 2)) return false;
+            transition.enter(ReoriginTransition.State.PREPARE);
+            transition.enter(ReoriginTransition.State.RESET);
+            scheduleTransitionTimeout(ctx);
             preparingLiveUpdates = new LiveUpdateBuffer(transform.liveUpdateBudgetBytes(), 4096);
             cancelSyntheticResetTimeout();
             syntheticResetTimeout = ctx.executor().schedule(() -> {
@@ -382,13 +389,8 @@ final class JavaSessionHook {
         }
 
         private void failReplay(ChannelHandlerContext ctx, ReoriginReplayPlan plan, RuntimeException exception) {
-            if (log != null) log.error("[RealCoords] replay failed; closing downstream session to avoid partial world state", exception);
-            plan.abort();
-            if (plan == activeReplayPlan) activeReplayPlan = null;
-            cancelReplayTasks();
-            syntheticResetPendingReplay = false;
-            bedrockSpawnWaitDeadlineMs = 0;
-            ctx.close();
+            if (plan != null) plan.abort();
+            failTransition(ctx, "replay exception: " + exception.getClass().getSimpleName() + (exception.getMessage() == null ? "" : ": " + exception.getMessage()));
         }
 
         void abortReplayPlan(ChannelHandlerContext ctx, ReoriginReplayPlan plan) {
@@ -445,6 +447,31 @@ final class JavaSessionHook {
         }
 
         @Override
+        public void channelInactive(ChannelHandlerContext ctx) throws Exception {
+            if (transition.state() != ReoriginTransition.State.NORMAL && transition.state() != ReoriginTransition.State.FAILED) {
+                failTransition(ctx, "downstream disconnected during transition");
+            } else {
+                cancelTransitionTimeout();
+                cancelSyntheticResetTimeout();
+                cancelReplayTasks();
+                if (activeReplayPlan != null) activeReplayPlan.abort();
+                activeReplayPlan = null;
+                if (preparingLiveUpdates != null) preparingLiveUpdates.clear();
+                preparingLiveUpdates = null;
+            }
+            super.channelInactive(ctx);
+        }
+
+        @Override
+        public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
+            if (transition.state() != ReoriginTransition.State.NORMAL && transition.state() != ReoriginTransition.State.FAILED) {
+                failTransition(ctx, "exception during transition: " + cause.getClass().getSimpleName() + (cause.getMessage() == null ? "" : ": " + cause.getMessage()));
+                return;
+            }
+            super.exceptionCaught(ctx, cause);
+        }
+
+        @Override
         public void channelRead(ChannelHandlerContext ctx, Object message) throws Exception {
             if (message instanceof Packet packet && firstClientbound.compareAndSet(false, true)) {
                 if (log != null) log.info("[RealCoords] Java hook first clientbound packet: " + packet.getClass().getName());
@@ -474,8 +501,7 @@ final class JavaSessionHook {
                     if (preparingLiveUpdates != null) preparingLiveUpdates.clear();
                     preparingLiveUpdates = null;
                     cancelReplayTasks();
-                    if (log != null) log.warning("[RealCoords] unable to queue a real player position during re-origin; closing session to avoid stale teleport state");
-                    ctx.close();
+                    failTransition(ctx, "live player-position queue overflow");
                     return;
                 }
                 if ((syntheticResetGate.active() || activeReplayPlan != null) && isWorldResetPacket(packet)) {
@@ -510,8 +536,7 @@ final class JavaSessionHook {
                     if (preparingLiveUpdates != null) preparingLiveUpdates.clear();
                     preparingLiveUpdates = null;
                     cancelReplayTasks();
-                    if (log != null) log.warning("[RealCoords] live world update buffer overflowed or could not snapshot a packet; closing session to avoid stale replay state");
-                    ctx.close();
+                    failTransition(ctx, "live world-update queue overflow or snapshot failure");
                     return;
                 }
                 Packet transformed = transform.clientbound(packet);
@@ -602,12 +627,10 @@ final class JavaSessionHook {
                     plan = prepareReplayPlan(chunkX, chunkZ, realX, realZ,
                             transform.entityReplayRadius());
                     syntheticResetPendingReplay = false;
+                    if (transition.state() == ReoriginTransition.State.RESET) transition.enter(ReoriginTransition.State.REPLAY);
                     ReoriginReplayPlan scheduledPlan = plan;
                     replayTimeout = ctx.executor().schedule(() -> {
-                        if (activeReplayPlan == scheduledPlan) {
-                            if (log != null) log.warning("[RealCoords] replay transaction timed out; closing downstream session");
-                            failReplay(ctx, scheduledPlan, new IllegalStateException("replay transaction timeout"));
-                        }
+                        if (activeReplayPlan == scheduledPlan) failTransition(ctx, "replay transaction timed out");
                     }, transform.replayTimeoutMillis(plan.chunkCount(), plan.entityPacketCount()), TimeUnit.MILLISECONDS);
                 }
                 if (geyserSession != null && !geyserSession.isSpawned()) {
@@ -625,8 +648,8 @@ final class JavaSessionHook {
                 bedrockSpawnWaitDeadlineMs = 0;
                 scheduleReplayBatch(ctx, plan);
             } catch (RuntimeException exception) {
-                if (log != null) log.error("[RealCoords] unable to start replay transaction; closing downstream session", exception);
-                ctx.close();
+                failTransition(ctx, "unable to start replay: " + exception.getClass().getSimpleName()
+                        + (exception.getMessage() == null ? "" : ": " + exception.getMessage()));
             }
         }
 
@@ -641,7 +664,10 @@ final class JavaSessionHook {
                     case CHUNKS -> replayChunkBatch(ctx, plan, transform.replayBatchSize());
                     case ENTITIES -> replayEntityBatch(ctx, plan, transform.entityReplayBatchSize());
                     case GLOBAL_STATE -> replayGlobalState(ctx, plan);
-                    case LIVE_UPDATES -> replayLiveUpdates(ctx, plan, 256);
+                    case LIVE_UPDATES -> {
+                        if (transition.state() == ReoriginTransition.State.REPLAY) transition.enter(ReoriginTransition.State.DRAIN);
+                        replayLiveUpdates(ctx, plan, 256);
+                    }
                     case COMPLETE -> {
                         finishReplay(ctx, plan);
                         return;
@@ -671,6 +697,9 @@ final class JavaSessionHook {
             preparingLiveUpdates = null;
             bedrockSpawnWaitDeadlineMs = 0;
             cancelReplayTasks();
+            cancelTransitionTimeout();
+            if (transition.state() == ReoriginTransition.State.REPLAY) transition.enter(ReoriginTransition.State.DRAIN);
+            if (transition.state() == ReoriginTransition.State.DRAIN) transition.enter(ReoriginTransition.State.NORMAL);
             if (log != null) log.info("[RealCoords] live re-origin replay completed; movement unfrozen");
         }
 
