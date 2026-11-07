@@ -516,4 +516,60 @@ class JavaSessionHookTest {
         channel.finishAndReleaseAll();
     }
 
+
+    @Test
+    void transitionTimeoutFailsClosedAndRecordsResetStage() throws Exception {
+        ShiftConfig config = new ShiftConfig();
+        config.dims.put(0, new ShiftConfig.Dim());
+        config.transitionTimeoutTicks = 1;
+        JavaSessionHook.JavaPacketTransformHandler handler =
+                new JavaSessionHook.JavaPacketTransformHandler(new JavaPacketTransform(config), null, null);
+        EmbeddedChannel channel = new EmbeddedChannel(handler);
+
+        assertTrue(handler.beginSyntheticReset(-801));
+        Thread.sleep(120);
+        channel.runScheduledPendingTasks();
+
+        assertEquals(ReoriginTransition.State.FAILED, handler.transitionState());
+        assertEquals(ReoriginTransition.State.RESET, handler.transitionFailure().failedAt());
+        assertFalse(channel.isOpen());
+        channel.finishAndReleaseAll();
+    }
+
+    @Test
+    void disconnectDuringTransitionRecordsFailureAndCleansUp() {
+        ShiftConfig config = new ShiftConfig();
+        config.dims.put(0, new ShiftConfig.Dim());
+        JavaSessionHook.JavaPacketTransformHandler handler =
+                new JavaSessionHook.JavaPacketTransformHandler(new JavaPacketTransform(config), null, null);
+        EmbeddedChannel channel = new EmbeddedChannel(handler);
+
+        assertTrue(handler.beginSyntheticReset(-802));
+        channel.close();
+        channel.runPendingTasks();
+
+        assertEquals(ReoriginTransition.State.FAILED, handler.transitionState());
+        assertEquals(ReoriginTransition.State.RESET, handler.transitionFailure().failedAt());
+        assertTrue(handler.transitionFailure().reason().contains("disconnect"));
+        channel.finishAndReleaseAll();
+    }
+
+    @Test
+    void exceptionDuringTransitionRecordsFailureAndClosesChannel() {
+        ShiftConfig config = new ShiftConfig();
+        config.dims.put(0, new ShiftConfig.Dim());
+        JavaSessionHook.JavaPacketTransformHandler handler =
+                new JavaSessionHook.JavaPacketTransformHandler(new JavaPacketTransform(config), null, null);
+        EmbeddedChannel channel = new EmbeddedChannel(handler);
+
+        assertTrue(handler.beginSyntheticReset(-803));
+        channel.pipeline().fireExceptionCaught(new IllegalStateException("test transition failure"));
+
+        assertEquals(ReoriginTransition.State.FAILED, handler.transitionState());
+        assertEquals(ReoriginTransition.State.RESET, handler.transitionFailure().failedAt());
+        assertTrue(handler.transitionFailure().reason().contains("exception"));
+        assertFalse(channel.isOpen());
+        channel.finishAndReleaseAll();
+    }
+
 }
