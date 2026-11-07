@@ -717,7 +717,9 @@ class JavaSessionHookTest {
         channel.writeOutbound(movement);
 
         assertTrue(channel.isOpen());
-        assertSame(movement, channel.readOutbound(), "none fallback must leave movement and deferral unchanged");
+        ServerboundMovePlayerPosPacket forwarded = channel.readOutbound();
+        assertNotNull(forwarded, "none fallback must continue forwarding movement");
+        assertEquals(400_001, forwarded.getX(), "none fallback must not rewrite the player's local coordinate");
         assertTrue(handler.deferralState().shouldDefer());
         assertEquals(ReoriginTransition.State.NORMAL, handler.transitionState());
         channel.finishAndReleaseAll();
