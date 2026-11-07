@@ -6,6 +6,16 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class TransitionDeferralStateTest {
     @Test
+    void unavailablePacketFieldsForceConservativeDeferral() {
+        TransitionDeferralState state = new TransitionDeferralState();
+        state.initialize(42);
+        assertFalse(state.shouldDefer());
+        state.markObservationUnavailable();
+        assertTrue(state.shouldDefer(),
+                "unknown packet state must be treated as unsafe until observation is reliable");
+    }
+
+    @Test
     void startsClearAndInitializesOnlyThePlayersOwnEntityId() {
         TransitionDeferralState state = new TransitionDeferralState();
         assertFalse(state.shouldDefer());

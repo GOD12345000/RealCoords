@@ -194,6 +194,8 @@ final class JavaSessionHook {
             channelContext = null;
         }
 
+        TransitionDeferralState deferralState() { return deferralState; }
+
         boolean beginSyntheticReset(int reservedTeleportId) {
             ChannelHandlerContext ctx = channelContext;
             if (ctx == null || !ctx.executor().inEventLoop()) {

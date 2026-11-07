@@ -37,6 +37,8 @@ final class TransitionDeferralState {
         }
     }
 
+    void markObservationUnavailable() { }
+
     boolean shouldDefer() { return containerOpen || isRiding() || sleeping || gliding; }
     int selfEntityId() { return selfEntityId; }
     boolean isContainerOpen() { return containerOpen; }

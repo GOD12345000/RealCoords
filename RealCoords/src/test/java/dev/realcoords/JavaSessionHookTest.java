@@ -20,6 +20,18 @@ import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.Clien
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundChunkBatchStartPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.level.ServerboundChunkBatchReceivedPacket;
 import org.junit.jupiter.api.Test;
+import net.kyori.adventure.text.Component;
+import org.geysermc.mcprotocollib.protocol.data.game.entity.metadata.EntityMetadata;
+import org.geysermc.mcprotocollib.protocol.data.game.entity.metadata.MetadataTypes;
+import org.geysermc.mcprotocollib.protocol.data.game.entity.metadata.Pose;
+import org.geysermc.mcprotocollib.protocol.data.game.entity.metadata.type.ByteEntityMetadata;
+import org.geysermc.mcprotocollib.protocol.data.game.entity.metadata.type.ObjectEntityMetadata;
+import org.geysermc.mcprotocollib.protocol.data.game.inventory.ContainerType;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundSetEntityDataPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundSetPassengersPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.inventory.ClientboundContainerClosePacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.inventory.ClientboundOpenScreenPacket;
+
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -365,6 +377,139 @@ class JavaSessionHookTest {
         assertEquals(0, plan.bufferedLiveUpdateCount(),
                 "synthetic reset position must never enter the real backend position queue");
         channel.close();
+        channel.finishAndReleaseAll();
+    }
+
+
+    @Test
+    void realContainerPacketsDriveHandlerDeferralState() {
+        ShiftConfig config = new ShiftConfig();
+        config.dims.put(0, new ShiftConfig.Dim());
+        JavaSessionHook.JavaPacketTransformHandler handler =
+                new JavaSessionHook.JavaPacketTransformHandler(new JavaPacketTransform(config), null, null);
+        EmbeddedChannel channel = new EmbeddedChannel(handler);
+        handler.deferralState().initialize(42);
+
+        ClientboundOpenScreenPacket open = new ClientboundOpenScreenPacket(
+                3, ContainerType.GENERIC_9X3, Component.text("Chest"));
+        ClientboundContainerClosePacket close = new ClientboundContainerClosePacket(3);
+        channel.writeInbound(open);
+        assertTrue(handler.deferralState().isContainerOpen());
+        assertTrue(handler.deferralState().shouldDefer());
+        channel.writeInbound(close);
+        assertFalse(handler.deferralState().isContainerOpen());
+        assertFalse(handler.deferralState().shouldDefer());
+        channel.finishAndReleaseAll();
+    }
+
+    @Test
+    void realPassengerPacketsOnlyTrackTheLocalPlayer() {
+        ShiftConfig config = new ShiftConfig();
+        config.dims.put(0, new ShiftConfig.Dim());
+        JavaSessionHook.JavaPacketTransformHandler handler =
+                new JavaSessionHook.JavaPacketTransformHandler(new JavaPacketTransform(config), null, null);
+        EmbeddedChannel channel = new EmbeddedChannel(handler);
+        handler.deferralState().initialize(42);
+
+        channel.writeInbound(new ClientboundSetPassengersPacket(100, new int[]{7, 8}));
+        assertFalse(handler.deferralState().isRiding());
+        channel.writeInbound(new ClientboundSetPassengersPacket(101, new int[]{42, 8}));
+        assertTrue(handler.deferralState().isRiding());
+        assertTrue(handler.deferralState().shouldDefer());
+        channel.writeInbound(new ClientboundSetPassengersPacket(100, new int[]{7}));
+        assertTrue(handler.deferralState().isRiding());
+        channel.writeInbound(new ClientboundSetPassengersPacket(101, new int[]{8}));
+        assertFalse(handler.deferralState().isRiding());
+        channel.finishAndReleaseAll();
+    }
+
+    @Test
+    void realPlayerMetadataPacketsTrackPoseAndGlidingOnlyForSelfEntity() {
+        ShiftConfig config = new ShiftConfig();
+        config.dims.put(0, new ShiftConfig.Dim());
+        JavaSessionHook.JavaPacketTransformHandler handler =
+                new JavaSessionHook.JavaPacketTransformHandler(new JavaPacketTransform(config), null, null);
+        EmbeddedChannel channel = new EmbeddedChannel(handler);
+        handler.deferralState().initialize(42);
+
+        EntityMetadata<?, ?>[] otherMetadata = new EntityMetadata[]{
+                new ObjectEntityMetadata<>(6, MetadataTypes.POSE, Pose.SLEEPING),
+                new ByteEntityMetadata(0, MetadataTypes.BYTE, (byte) 0x80)
+        };
+        channel.writeInbound(new ClientboundSetEntityDataPacket(99, otherMetadata));
+        assertFalse(handler.deferralState().shouldDefer());
+
+        channel.writeInbound(new ClientboundSetEntityDataPacket(42, new EntityMetadata[]{
+                new ObjectEntityMetadata<>(6, MetadataTypes.POSE, Pose.SLEEPING)}));
+        assertTrue(handler.deferralState().isSleeping());
+        assertTrue(handler.deferralState().shouldDefer());
+        channel.writeInbound(new ClientboundSetEntityDataPacket(42, new EntityMetadata[]{
+                new ObjectEntityMetadata<>(6, MetadataTypes.POSE, Pose.STANDING)}));
+        assertFalse(handler.deferralState().isSleeping());
+        channel.writeInbound(new ClientboundSetEntityDataPacket(42, new EntityMetadata[]{
+                new ByteEntityMetadata(0, MetadataTypes.BYTE, (byte) 0x80)}));
+        assertTrue(handler.deferralState().isGliding());
+        channel.writeInbound(new ClientboundSetEntityDataPacket(42, new EntityMetadata[]{
+                new ByteEntityMetadata(0, MetadataTypes.BYTE, (byte) 0)}));
+        assertFalse(handler.deferralState().isGliding());
+        channel.finishAndReleaseAll();
+    }
+
+    @Test
+    void realLoginAndRespawnPacketsInitializeAndResetHandlerState() {
+        ShiftConfig config = new ShiftConfig();
+        config.dims.put(0, new ShiftConfig.Dim());
+        JavaSessionHook.JavaPacketTransformHandler handler =
+                new JavaSessionHook.JavaPacketTransformHandler(new JavaPacketTransform(config), null, null);
+        EmbeddedChannel channel = new EmbeddedChannel(handler);
+        Key world = Key.key("minecraft:overworld");
+        PlayerSpawnInfo spawn = new PlayerSpawnInfo(0, world, 0L, GameMode.SURVIVAL,
+                null, false, false, null, 0, 63);
+
+        channel.writeInbound(new ClientboundLoginPacket(42, false, new Key[]{world},
+                20, 10, 10, false, true, false, spawn, true, true));
+        assertEquals(42, handler.deferralState().selfEntityId());
+        assertFalse(handler.deferralState().shouldDefer());
+
+        channel.writeInbound(new ClientboundOpenScreenPacket(3, ContainerType.GENERIC_9X3,
+                Component.text("Chest")));
+        assertTrue(handler.deferralState().shouldDefer());
+        channel.writeInbound(new ClientboundRespawnPacket(spawn, true, false));
+        assertFalse(handler.deferralState().shouldDefer());
+        assertEquals(42, handler.deferralState().selfEntityId());
+        channel.finishAndReleaseAll();
+    }
+
+    @Test
+    void respawnDuringOpenContainerClearsContainerDeferral() {
+        assertRespawnResetsState(state -> state.observeContainerOpened());
+    }
+
+    @Test
+    void respawnWhileRidingClearsPassengerDeferral() {
+        assertRespawnResetsState(state -> state.observePassengers(100, 42));
+    }
+
+    @Test
+    void dimensionChangeWhileSleepingClearsPoseDeferral() {
+        assertRespawnResetsState(state -> state.observePlayerMetadata(42, 6, Pose.SLEEPING));
+    }
+
+    private static void assertRespawnResetsState(java.util.function.Consumer<TransitionDeferralState> setup) {
+        ShiftConfig config = new ShiftConfig();
+        config.dims.put(0, new ShiftConfig.Dim());
+        JavaSessionHook.JavaPacketTransformHandler handler =
+                new JavaSessionHook.JavaPacketTransformHandler(new JavaPacketTransform(config), null, null);
+        EmbeddedChannel channel = new EmbeddedChannel(handler);
+        Key world = Key.key("minecraft:overworld");
+        PlayerSpawnInfo spawn = new PlayerSpawnInfo(0, world, 0L, GameMode.SURVIVAL,
+                null, false, false, null, 0, 63);
+        channel.writeInbound(new ClientboundLoginPacket(42, false, new Key[]{world},
+                20, 10, 10, false, true, false, spawn, true, true));
+        setup.accept(handler.deferralState());
+        assertTrue(handler.deferralState().shouldDefer());
+        channel.writeInbound(new ClientboundRespawnPacket(spawn, true, false));
+        assertFalse(handler.deferralState().shouldDefer());
         channel.finishAndReleaseAll();
     }
 
