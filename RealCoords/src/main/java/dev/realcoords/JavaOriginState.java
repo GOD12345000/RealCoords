@@ -113,8 +113,12 @@ final class JavaOriginState {
         return acceptServerboundPosition(x, z, maxJump, true);
     }
 
+    double distanceFromLastPosition(double x, double z) {
+        return hasPosition ? Math.hypot(x - lastX, z - lastZ) : 0.0;
+    }
+
     boolean observeServerboundPosition(double x, double z, double maxJump) {
-        if (hasPosition && Math.hypot(x - lastX, z - lastZ) > maxJump) return false;
+        if (hasPosition && distanceFromLastPosition(x, z) > maxJump) return false;
         lastX = x;
         lastZ = z;
         hasPosition = true;
@@ -125,9 +129,13 @@ final class JavaOriginState {
     }
 
     boolean acceptServerboundPosition(double x, double z, double maxJump, boolean replayCacheAvailable) {
+        return acceptServerboundPosition(x, z, maxJump, replayCacheAvailable, true);
+    }
+
+    boolean acceptServerboundPosition(double x, double z, double maxJump, boolean replayCacheAvailable, boolean allowOriginShift) {
         if (!observeServerboundPosition(x, z, maxJump)) return false;
 
-        if (config.shiftWhileMoving && replayCacheAvailable) {
+        if (allowOriginShift && config.shiftWhileMoving && replayCacheAvailable) {
             long now = System.currentTimeMillis();
             if (now - lastMovementOriginShiftMs >= Math.max(0, config.cooldownMs)) {
                 int oldX = offsetX;
@@ -157,6 +165,28 @@ final class JavaOriginState {
 
     double realZ() {
         return lastZ;
+    }
+
+    int triggerDistance() {
+        return config.dim(dimension).trigger;
+    }
+
+    Snapshot forceMovementOrigin(double realX, double realZ) {
+        int oldX = offsetX;
+        int oldZ = offsetZ;
+        ShiftConfig.Dim dim = config.dim(dimension);
+        if (!dim.enabled) return new Snapshot(offsetX, offsetZ, false, hasPosition);
+        offsetX = aligned(realX, dim.alignment);
+        offsetZ = aligned(realZ, dim.alignment);
+        lastX = realX;
+        lastZ = realZ;
+        hasPosition = true;
+        needsAbsoluteX = false;
+        needsAbsoluteZ = false;
+        resetPending = false;
+        publishOffsets();
+        dimensionOffsets.put(dimension, new Offsets(offsetX, offsetZ));
+        return new Snapshot(offsetX, offsetZ, oldX != offsetX || oldZ != offsetZ, true);
     }
 
     boolean hasPosition() {

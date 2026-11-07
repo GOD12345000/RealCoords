@@ -725,4 +725,60 @@ class JavaPacketTransformTest {
         assertEquals(23_000_000 - transform.offsetX(), shifted.getBlockEntities()[0].getNbt().getInt("x"));
         assertEquals(-17_000_000 - transform.offsetZ(), shifted.getBlockEntities()[0].getNbt().getInt("z"));
     }
+    @Test
+    void transitionGraceAcceptsOneHundredBlocksButRejectsOffsetScaleJump() {
+        ShiftConfig strictConfig = new ShiftConfig();
+        strictConfig.dims.put(0, new ShiftConfig.Dim());
+        JavaOriginState strictOrigin = new JavaOriginState(strictConfig);
+        strictOrigin.absolutePosition(0, 0, 10);
+        JavaPacketTransform strict = new JavaPacketTransform(strictOrigin, 64.0, strictConfig);
+        ServerboundMovePlayerPosPacket strictJump =
+                new ServerboundMovePlayerPosPacket(true, false, 100, 70, 0);
+        assertNull(strict.serverbound(strictJump, false, false),
+                "outside transition grace, movement beyond max-serverbound-jump must remain rejected");
+
+        ShiftConfig graceConfig = new ShiftConfig();
+        graceConfig.dims.put(0, new ShiftConfig.Dim());
+        JavaOriginState ordinaryOrigin = new JavaOriginState(graceConfig);
+        ordinaryOrigin.absolutePosition(0, 0, 10);
+        JavaPacketTransform ordinary = new JavaPacketTransform(ordinaryOrigin, 64.0, graceConfig);
+        ServerboundMovePlayerPosPacket oneHundredBlocks =
+                new ServerboundMovePlayerPosPacket(true, false, 100, 70, 0);
+        assertNotNull(ordinary.serverbound(oneHundredBlocks, false, true),
+                "a 100-block movement must fit within the bounded transition grace limit");
+
+        JavaOriginState staleOrigin = new JavaOriginState(graceConfig);
+        staleOrigin.absolutePosition(0, 0, 10);
+        JavaPacketTransform stale = new JavaPacketTransform(staleOrigin, 64.0, graceConfig);
+        ServerboundMovePlayerPosPacket offsetScaleJump =
+                new ServerboundMovePlayerPosPacket(true, false, 50_000, 70, 0);
+        assertNull(stale.serverbound(offsetScaleJump, false, true),
+                "a 50,000-block stale-coordinate jump must be rejected during transition grace");
+    }
+    @Test
+    void rejectedTransitionJumpReportsMeasuredDistanceAndFiniteLimit() {
+        ShiftConfig config = new ShiftConfig();
+        config.dims.put(0, new ShiftConfig.Dim());
+        config.transitionGraceMaxJump = 256.0;
+        JavaOriginState origin = new JavaOriginState(config);
+        origin.absolutePosition(0, 0, 10);
+        JavaPacketTransform transform = new JavaPacketTransform(origin, 64.0, config);
+
+        ServerboundMovePlayerPosPacket stale = new ServerboundMovePlayerPosPacket(
+                true, false, 50_000, 70, 0);
+        assertNull(transform.serverbound(stale, false, 256.0));
+        JavaPacketTransform.MovementRejection rejection = transform.takeMovementRejection();
+        assertNotNull(rejection);
+        assertEquals(50_000.0, rejection.distance(), 0.001);
+        assertEquals(256.0, rejection.limit());
+    }
+
+    @Test
+    void programmaticConfigCannotMakeTransitionLimitSmallerThanNormalLimit() {
+        ShiftConfig config = new ShiftConfig();
+        config.maxJump = 512.0;
+        JavaPacketTransform transform = new JavaPacketTransform(config);
+        assertEquals(512.0, transform.transitionGraceMaxJump());
+    }
+
 }

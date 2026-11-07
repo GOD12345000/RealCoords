@@ -5,6 +5,7 @@ import io.netty.channel.ChannelDuplexHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPipeline;
 import io.netty.channel.ChannelPromise;
+import net.kyori.adventure.text.Component;
 import io.netty.util.concurrent.ScheduledFuture;
 import org.geysermc.geyser.api.extension.ExtensionLogger;
 import org.geysermc.geyser.session.DownstreamSession;
@@ -20,6 +21,16 @@ import org.geysermc.mcprotocollib.network.event.session.PacketSendingEvent;
 import org.geysermc.mcprotocollib.network.event.session.SessionListener;
 import org.geysermc.mcprotocollib.network.packet.Packet;
 import org.geysermc.mcprotocollib.protocol.codec.MinecraftPacket;
+import org.geysermc.mcprotocollib.protocol.data.game.entity.metadata.EntityMetadata;
+import org.geysermc.mcprotocollib.protocol.data.game.entity.metadata.Pose;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.ClientboundLoginPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.ClientboundRespawnPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundSetEntityDataPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundSetPassengersPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.inventory.ClientboundContainerClosePacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.inventory.ClientboundOpenScreenPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.player.ClientboundPlayerPositionPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.level.ServerboundAcceptTeleportationPacket;
 
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -157,11 +168,17 @@ final class JavaSessionHook {
         private final JavaPacketTransform transform;
         private final GeyserSession geyserSession;
         private final SyntheticResetGate syntheticResetGate = new SyntheticResetGate();
+        private final TransitionDeferralState deferralState = new TransitionDeferralState();
         private ChannelHandlerContext channelContext;
         private ScheduledFuture<?> syntheticResetTimeout;
+        private ScheduledFuture<?> transitionTimeout;
+        private final ReoriginTransition transition = new ReoriginTransition();
+        private final TransitionTimingPolicy timingPolicy;
+        private boolean transitionDisconnectNotified;
         private ScheduledFuture<?> replayBatchTask;
         private ScheduledFuture<?> replayTimeout;
         private ReoriginReplayPlan activeReplayPlan;
+        private LiveUpdateBuffer preparingLiveUpdates;
         private boolean syntheticResetPendingReplay;
         private long bedrockSpawnWaitDeadlineMs;
         private int nextSyntheticTeleportId = Integer.MIN_VALUE;
@@ -174,6 +191,7 @@ final class JavaSessionHook {
             this.transform = transform;
             this.geyserSession = geyserSession;
             this.log = log;
+            this.timingPolicy = new TransitionTimingPolicy(transform.transitionCooldownTicks(), transform.transitionGraceTicks());
         }
 
         @Override
@@ -183,12 +201,68 @@ final class JavaSessionHook {
 
         @Override
         public void handlerRemoved(ChannelHandlerContext ctx) {
+            if (transition.state() != ReoriginTransition.State.NORMAL && transition.state() != ReoriginTransition.State.FAILED) {
+                transition.fail("handler removed during transition");
+            }
+            cancelTransitionTimeout();
             abortSyntheticReset();
             if (activeReplayPlan != null) activeReplayPlan.abort();
             activeReplayPlan = null;
             cancelReplayTasks();
             channelContext = null;
         }
+
+        TransitionDeferralState deferralState() { return deferralState; }
+
+        private void cancelTransitionTimeout() {
+            ScheduledFuture<?> timeout = transitionTimeout;
+            transitionTimeout = null;
+            if (timeout != null) timeout.cancel(false);
+        }
+
+        private void scheduleTransitionTimeout(ChannelHandlerContext ctx) {
+            cancelTransitionTimeout();
+            long timeoutMillis = Math.max(1L, transform.transitionTimeoutMillis());
+            transitionTimeout = ctx.executor().schedule(() -> failTransition(ctx, "transition timed out during " + transition.state()), timeoutMillis, TimeUnit.MILLISECONDS);
+        }
+
+        private void dispatchDisconnect(ChannelHandlerContext ctx, String message) {
+            if (geyserSession == null || transitionDisconnectNotified) {
+                if (ctx != null) ctx.close();
+                return;
+            }
+            transitionDisconnectNotified = true;
+            geyserSession.getTickEventLoop().execute(() -> {
+                // Start the explicit Bedrock disconnect before closing the Java channel.
+                geyserSession.disconnect(Component.text(message));
+                if (ctx != null) ctx.executor().execute(ctx::close);
+            });
+        }
+
+        private void failTransition(ChannelHandlerContext ctx, String reason) {
+            if (transition.state() == ReoriginTransition.State.NORMAL || transition.state() == ReoriginTransition.State.FAILED) {
+                dispatchDisconnect(ctx, "RealCoords could not safely complete the coordinate transition. Please reconnect.");
+                return;
+            }
+            transition.fail(reason);
+            cancelTransitionTimeout();
+            cancelSyntheticResetTimeout();
+            syntheticResetGate.abort();
+            syntheticResetPendingReplay = false;
+            if (preparingLiveUpdates != null) preparingLiveUpdates.clear();
+            preparingLiveUpdates = null;
+            if (activeReplayPlan != null) activeReplayPlan.abort();
+            activeReplayPlan = null;
+            cancelReplayTasks();
+            bedrockSpawnWaitDeadlineMs = 0;
+            if (log != null) log.error("[RealCoords] transition failed at " + transition.failure().failedAt() + ": " + transition.failure().reason());
+            dispatchDisconnect(ctx, "RealCoords could not safely complete the coordinate transition. Please reconnect.");
+        }
+
+
+        ReoriginTransition.State transitionState() { return transition.state(); }
+
+        ReoriginTransition.Failure transitionFailure() { return transition.failure(); }
 
         boolean beginSyntheticReset(int reservedTeleportId) {
             ChannelHandlerContext ctx = channelContext;
@@ -197,10 +271,13 @@ final class JavaSessionHook {
             }
             if (activeReplayPlan != null || syntheticResetPendingReplay) return false;
             if (!syntheticResetGate.begin(reservedTeleportId, 2)) return false;
+            transition.enter(ReoriginTransition.State.PREPARE);
+            transition.enter(ReoriginTransition.State.RESET);
+            scheduleTransitionTimeout(ctx);
+            preparingLiveUpdates = new LiveUpdateBuffer(transform.liveUpdateBudgetBytes(), 4096);
             cancelSyntheticResetTimeout();
             syntheticResetTimeout = ctx.executor().schedule(() -> {
-                if (log != null) log.warning("[RealCoords] synthetic reset acknowledgement timed out; closing downstream session to prevent synthetic packet leakage");
-                abortSyntheticReset();
+                failTransition(ctx, "synthetic reset acknowledgement timed out");
             }, transform.syntheticAckTimeoutMillis(), TimeUnit.MILLISECONDS);
             return true;
         }
@@ -209,6 +286,8 @@ final class JavaSessionHook {
             boolean wasActive = syntheticResetGate.active();
             syntheticResetGate.abort();
             syntheticResetPendingReplay = false;
+            if (preparingLiveUpdates != null) preparingLiveUpdates.clear();
+            preparingLiveUpdates = null;
             cancelSyntheticResetTimeout();
             // Once synthetic packets have entered Geyser, a timeout/abort must not
             // release a late acknowledgement to the real Java server.
@@ -247,8 +326,13 @@ final class JavaSessionHook {
             if (activeReplayPlan != null) throw new IllegalStateException("A replay plan is already active");
             JavaPacketTransform.ReplaySnapshot snapshot = transform.prepareReplaySnapshot(
                     centerChunkX, centerChunkZ, centerX, centerZ, entityRadius);
+            LiveUpdateBuffer liveUpdates = preparingLiveUpdates;
+            if (liveUpdates == null) {
+                liveUpdates = new LiveUpdateBuffer(transform.liveUpdateBudgetBytes(), 4096);
+            }
+            preparingLiveUpdates = null;
             activeReplayPlan = new ReoriginReplayPlan(snapshot.chunks(), snapshot.entities(), snapshot.globalState(),
-                    new LiveUpdateBuffer(transform.liveUpdateBudgetBytes(), 4096));
+                    liveUpdates);
             return activeReplayPlan;
         }
 
@@ -315,13 +399,8 @@ final class JavaSessionHook {
         }
 
         private void failReplay(ChannelHandlerContext ctx, ReoriginReplayPlan plan, RuntimeException exception) {
-            if (log != null) log.error("[RealCoords] replay failed; closing downstream session to avoid partial world state", exception);
-            plan.abort();
-            if (plan == activeReplayPlan) activeReplayPlan = null;
-            cancelReplayTasks();
-            syntheticResetPendingReplay = false;
-            bedrockSpawnWaitDeadlineMs = 0;
-            ctx.close();
+            if (plan != null) plan.abort();
+            failTransition(ctx, "replay exception: " + exception.getClass().getSimpleName() + (exception.getMessage() == null ? "" : ": " + exception.getMessage()));
         }
 
         void abortReplayPlan(ChannelHandlerContext ctx, ReoriginReplayPlan plan) {
@@ -330,9 +409,7 @@ final class JavaSessionHook {
             }
             if (plan == activeReplayPlan) {
                 plan.abort();
-                activeReplayPlan = null;
-                cancelReplayTasks();
-                ctx.close();
+                failTransition(ctx, "replay plan explicitly aborted");
             }
         }
 
@@ -378,11 +455,63 @@ final class JavaSessionHook {
         }
 
         @Override
+        public void channelInactive(ChannelHandlerContext ctx) throws Exception {
+            if (transition.state() != ReoriginTransition.State.NORMAL && transition.state() != ReoriginTransition.State.FAILED) {
+                failTransition(ctx, "downstream disconnected during transition");
+            } else {
+                cancelTransitionTimeout();
+                cancelSyntheticResetTimeout();
+                cancelReplayTasks();
+                if (activeReplayPlan != null) activeReplayPlan.abort();
+                activeReplayPlan = null;
+                if (preparingLiveUpdates != null) preparingLiveUpdates.clear();
+                preparingLiveUpdates = null;
+            }
+            super.channelInactive(ctx);
+        }
+
+        @Override
+        public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
+            if (transition.state() != ReoriginTransition.State.NORMAL && transition.state() != ReoriginTransition.State.FAILED) {
+                failTransition(ctx, "exception during transition: " + cause.getClass().getSimpleName() + (cause.getMessage() == null ? "" : ": " + cause.getMessage()));
+                return;
+            }
+            super.exceptionCaught(ctx, cause);
+        }
+
+        @Override
         public void channelRead(ChannelHandlerContext ctx, Object message) throws Exception {
             if (message instanceof Packet packet && firstClientbound.compareAndSet(false, true)) {
                 if (log != null) log.info("[RealCoords] Java hook first clientbound packet: " + packet.getClass().getName());
             }
             if (message instanceof Packet packet) {
+                observeDeferralPacket(packet);
+                if (isImmediatePassThroughPacket(packet)) {
+                    super.channelRead(ctx, packet);
+                    return;
+                }
+                // A real backend position update is part of the live transition stream.
+                // Keep its raw packet until replay drains so it is transformed exactly once
+                // with the final origin. Synthetic positions are injected downstream via
+                // ctx.fireChannelRead and never re-enter this inbound handler.
+                if ((syntheticResetGate.active() || syntheticResetPendingReplay || activeReplayPlan != null)
+                        && packet instanceof ClientboundPlayerPositionPacket realPosition) {
+                    boolean buffered = false;
+                    if (activeReplayPlan != null) {
+                        buffered = activeReplayPlan.bufferLiveUpdate(realPosition);
+                    } else if (preparingLiveUpdates != null) {
+                        buffered = preparingLiveUpdates.offer(realPosition);
+                    }
+                    if (buffered) return;
+
+                    if (activeReplayPlan != null) activeReplayPlan.abort();
+                    activeReplayPlan = null;
+                    if (preparingLiveUpdates != null) preparingLiveUpdates.clear();
+                    preparingLiveUpdates = null;
+                    cancelReplayTasks();
+                    failTransition(ctx, "live player-position queue overflow");
+                    return;
+                }
                 if ((syntheticResetGate.active() || activeReplayPlan != null) && isWorldResetPacket(packet)) {
                     if (log != null) log.warning("[RealCoords] unexpected backend login/respawn during live re-origin; closing downstream session");
                     if (activeReplayPlan != null) activeReplayPlan.abort();
@@ -391,15 +520,31 @@ final class JavaSessionHook {
                     ctx.close();
                     return;
                 }
-                if (activeReplayPlan != null && isReplaySensitive(packet)) {
-                    if (packet instanceof MinecraftPacket minecraftPacket
-                            && activeReplayPlan.bufferLiveUpdate(minecraftPacket)) {
-                        return;
+                if ((syntheticResetGate.active() || syntheticResetPendingReplay || activeReplayPlan != null)
+                        && isReplaySensitive(packet)) {
+                    boolean cachedAtArrival = false;
+                    try {
+                        transform.clientbound(packet);
+                        transform.takeOriginChange();
+                        cachedAtArrival = true;
+                    } catch (RuntimeException exception) {
+                        if (log != null) log.error("[RealCoords] unable to observe a live world update during PREPARE/REPLAY", exception);
                     }
+                    boolean buffered = false;
+                    if (cachedAtArrival && packet instanceof MinecraftPacket minecraftPacket) {
+                        if (activeReplayPlan != null) {
+                            buffered = activeReplayPlan.bufferLiveUpdate(minecraftPacket);
+                        } else if (preparingLiveUpdates != null) {
+                            buffered = preparingLiveUpdates.offer(minecraftPacket);
+                        }
+                    }
+                    if (buffered) return;
                     if (activeReplayPlan != null) activeReplayPlan.abort();
                     activeReplayPlan = null;
-                    if (log != null) log.warning("[RealCoords] live world update buffer overflowed or could not snapshot a packet; closing session to avoid stale replay state");
-                    ctx.close();
+                    if (preparingLiveUpdates != null) preparingLiveUpdates.clear();
+                    preparingLiveUpdates = null;
+                    cancelReplayTasks();
+                    failTransition(ctx, "live world-update queue overflow or snapshot failure");
                     return;
                 }
                 Packet transformed = transform.clientbound(packet);
@@ -430,6 +575,45 @@ final class JavaSessionHook {
             super.channelRead(ctx, message);
         }
 
+        private void observeDeferralPacket(Packet packet) {
+            if (!channelContext.executor().inEventLoop()) {
+                throw new IllegalStateException("deferral state accessed outside the Java handler event loop");
+            }
+            if (packet instanceof ClientboundLoginPacket login) {
+                deferralState.initialize(login.getEntityId());
+            } else if (packet instanceof ClientboundRespawnPacket) {
+                // In 1.21.8, a dimension change is represented by Respawn.
+                deferralState.resetForRespawn();
+            } else if (packet instanceof ClientboundOpenScreenPacket) {
+                deferralState.observeContainerOpened();
+            } else if (packet instanceof ClientboundContainerClosePacket) {
+                deferralState.observeContainerClosed();
+            } else if (packet instanceof ClientboundSetPassengersPacket passengers) {
+                deferralState.observePassengers(passengers.getEntityId(), passengers.getPassengerIds());
+            } else if (packet instanceof ClientboundSetEntityDataPacket entityData) {
+                for (EntityMetadata<?, ?> metadata : entityData.getMetadata()) {
+                    if (metadata == null) {
+                        deferralState.markObservationUnavailable();
+                        continue;
+                    }
+                    Object value = metadata.getValue();
+                    if (metadata.getId() == 6) {
+                        if (value instanceof Pose pose) {
+                            deferralState.observePlayerMetadata(entityData.getEntityId(), 6, pose);
+                        } else {
+                            deferralState.markObservationUnavailable();
+                        }
+                    } else if (metadata.getId() == 0) {
+                        if (value instanceof Byte flags) {
+                            deferralState.observePlayerMetadata(entityData.getEntityId(), 0, flags);
+                        } else {
+                            deferralState.markObservationUnavailable();
+                        }
+                    }
+                }
+            }
+        }
+
         private int allocateSyntheticTeleportId() {
             int id = nextSyntheticTeleportId++;
             if (nextSyntheticTeleportId >= 0) nextSyntheticTeleportId = Integer.MIN_VALUE;
@@ -451,12 +635,10 @@ final class JavaSessionHook {
                     plan = prepareReplayPlan(chunkX, chunkZ, realX, realZ,
                             transform.entityReplayRadius());
                     syntheticResetPendingReplay = false;
+                    if (transition.state() == ReoriginTransition.State.RESET) transition.enter(ReoriginTransition.State.REPLAY);
                     ReoriginReplayPlan scheduledPlan = plan;
                     replayTimeout = ctx.executor().schedule(() -> {
-                        if (activeReplayPlan == scheduledPlan) {
-                            if (log != null) log.warning("[RealCoords] replay transaction timed out; closing downstream session");
-                            failReplay(ctx, scheduledPlan, new IllegalStateException("replay transaction timeout"));
-                        }
+                        if (activeReplayPlan == scheduledPlan) failTransition(ctx, "replay transaction timed out");
                     }, transform.replayTimeoutMillis(plan.chunkCount(), plan.entityPacketCount()), TimeUnit.MILLISECONDS);
                 }
                 if (geyserSession != null && !geyserSession.isSpawned()) {
@@ -474,8 +656,8 @@ final class JavaSessionHook {
                 bedrockSpawnWaitDeadlineMs = 0;
                 scheduleReplayBatch(ctx, plan);
             } catch (RuntimeException exception) {
-                if (log != null) log.error("[RealCoords] unable to start replay transaction; closing downstream session", exception);
-                ctx.close();
+                failTransition(ctx, "unable to start replay: " + exception.getClass().getSimpleName()
+                        + (exception.getMessage() == null ? "" : ": " + exception.getMessage()));
             }
         }
 
@@ -490,7 +672,10 @@ final class JavaSessionHook {
                     case CHUNKS -> replayChunkBatch(ctx, plan, transform.replayBatchSize());
                     case ENTITIES -> replayEntityBatch(ctx, plan, transform.entityReplayBatchSize());
                     case GLOBAL_STATE -> replayGlobalState(ctx, plan);
-                    case LIVE_UPDATES -> replayLiveUpdates(ctx, plan, 256);
+                    case LIVE_UPDATES -> {
+                        if (transition.state() == ReoriginTransition.State.REPLAY) transition.enter(ReoriginTransition.State.DRAIN);
+                        replayLiveUpdates(ctx, plan, 256);
+                    }
                     case COMPLETE -> {
                         finishReplay(ctx, plan);
                         return;
@@ -517,8 +702,13 @@ final class JavaSessionHook {
             if (plan != activeReplayPlan || !plan.complete()) return;
             activeReplayPlan = null;
             syntheticResetPendingReplay = false;
+            preparingLiveUpdates = null;
             bedrockSpawnWaitDeadlineMs = 0;
             cancelReplayTasks();
+            cancelTransitionTimeout();
+            timingPolicy.transitionCompleted(System.nanoTime());
+            if (transition.state() == ReoriginTransition.State.REPLAY) transition.enter(ReoriginTransition.State.DRAIN);
+            if (transition.state() == ReoriginTransition.State.DRAIN) transition.enter(ReoriginTransition.State.NORMAL);
             if (log != null) log.info("[RealCoords] live re-origin replay completed; movement unfrozen");
         }
 
@@ -529,6 +719,28 @@ final class JavaSessionHook {
             ScheduledFuture<?> timeout = replayTimeout;
             replayTimeout = null;
             if (timeout != null) timeout.cancel(false);
+        }
+
+        private void logMovementRejection() {
+            JavaPacketTransform.MovementRejection rejection = transform.takeMovementRejection();
+            if (rejection == null) return;
+            long now = System.currentTimeMillis();
+            if (now - lastGuardWarningMs >= 5000) {
+                lastGuardWarningMs = now;
+                if (log != null) log.warning("[RealCoords] dropped serverbound movement: distance="
+                        + rejection.distance() + " blocks, limit=" + rejection.limit() + " blocks");
+            }
+        }
+
+        private static boolean isImmediatePassThroughPacket(Packet packet) {
+            String name = packet.getClass().getSimpleName();
+            return name.equals("ClientboundPingPacket")
+                    || name.equals("ClientboundKeepAlivePacket")
+                    || name.equals("ClientboundChunkBatchStartPacket")
+                    || name.equals("ClientboundChunkBatchFinishedPacket")
+                    || name.equals("ServerboundPongPacket")
+                    || name.equals("ServerboundKeepAlivePacket")
+                    || name.equals("ServerboundChunkBatchReceivedPacket");
         }
 
         private static boolean isMovementPacket(Packet packet) {
@@ -562,6 +774,10 @@ final class JavaSessionHook {
                 if (log != null) log.info("[RealCoords] Java hook first serverbound packet: " + packet.getClass().getName());
             }
             if (message instanceof Packet packet) {
+                if (isImmediatePassThroughPacket(packet)) {
+                    super.write(ctx, packet, promise);
+                    return;
+                }
                 if (syntheticResetGate.shouldSuppress(packet)) {
                     if (!syntheticResetGate.active()) {
                         cancelSyntheticResetTimeout();
@@ -572,17 +788,58 @@ final class JavaSessionHook {
                     promise.setSuccess();
                     return;
                 }
+                // Geyser has already confirmed this backend teleport in Bedrock
+                // coordinates. Forward the acknowledgement unchanged; only the
+                // synthetic-reset gate above may consume a synthetic confirmation.
+                if (packet instanceof ServerboundAcceptTeleportationPacket) {
+                    super.write(ctx, packet, promise);
+                    return;
+                }
+                long nowNanos = System.nanoTime();
+                boolean transitionActive = transition.state() != ReoriginTransition.State.NORMAL
+                        && transition.state() != ReoriginTransition.State.FAILED;
+                double jumpLimit = timingPolicy.movementJumpLimit(transitionActive, nowNanos,
+                        transform.maxServerboundJump(), transform.transitionGraceMaxJump());
                 if (isMovementPacket(packet)
                         && (syntheticResetGate.active() || syntheticResetPendingReplay)) {
+                    transform.observeMovementDuringReplay(packet, jumpLimit);
+                    logMovementRejection();
                     promise.setSuccess();
                     return;
                 }
                 if (isMovementPacket(packet) && activeReplayPlan != null) {
-                    transform.observeMovementDuringReplay(packet);
+                    transform.observeMovementDuringReplay(packet, jumpLimit);
+                    logMovementRejection();
                     promise.setSuccess();
                     return;
                 }
-                Packet transformed = transform.serverbound(packet);
+                if (deferralState.shouldDefer() && isMovementPacket(packet)) {
+                    if (!transform.observeMovementDuringReplay(packet, jumpLimit)) {
+                        logMovementRejection();
+                        promise.setSuccess();
+                        return;
+                    }
+                    TransitionWalkFallback.Action fallback = transform.deferredWalkFallback(packet);
+                    if (fallback == TransitionWalkFallback.Action.KICK) {
+                        promise.setSuccess();
+                        dispatchDisconnect(ctx, "RealCoords cannot safely defer re-origin while you continue walking. Please reconnect.");
+                        return;
+                    }
+                    if (fallback == TransitionWalkFallback.Action.REORIGIN) {
+                        promise.setSuccess();
+                        if (!transform.forceDeferredReorigin(packet)) {
+                            dispatchDisconnect(ctx, "RealCoords could not safely rebuild the nearby world. Please reconnect.");
+                            return;
+                        }
+                        int forcedTeleportId = allocateSyntheticTeleportId();
+                        if (injectSyntheticReset(ctx, forcedTeleportId) == 0) {
+                            failTransition(ctx, "walk-fallback reorigin could not start replay");
+                        }
+                        return;
+                    }
+                }
+                boolean allowOriginShift = !deferralState.shouldDefer() && !timingPolicy.cooldownActive(nowNanos);
+                Packet transformed = transform.serverbound(packet, allowOriginShift, jumpLimit);
                 JavaOriginState.Snapshot movementOriginChange = transform.takeOriginChange();
                 if (movementOriginChange != null && movementOriginChange.changed()) {
                     promise.setSuccess();
@@ -597,11 +854,7 @@ final class JavaSessionHook {
                     super.write(ctx, transformed, promise);
                 } else {
                     promise.setSuccess();
-                    long now = System.currentTimeMillis();
-                    if (now - lastGuardWarningMs >= 5000) {
-                        lastGuardWarningMs = now;
-                        if (log != null) log.warning("[RealCoords] dropped an implausible Java serverbound player movement packet");
-                    }
+                    logMovementRejection();
                 }
                 return;
             }

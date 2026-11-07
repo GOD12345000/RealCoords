@@ -15,12 +15,19 @@ origin-shift:
   trigger-distance: 100000
   # 真實座標回到此範圍內時歸零；必須小於 trigger-distance（載入時會檢查並警告／調整）
   reset-distance: 50000
-  # bedrock 模式兩次換原點的最短間隔；Java 連續移動模式也會使用此冷卻時間
+  # 舊模式冷卻時間；單位為 tick
   cooldown-ticks: 100
-  # bedrock 模式換原點／伺服器傳送後，等待客戶端到位的最長時間
+  # 舊模式換原點／伺服器傳送後，等待客戶端到位的最長時間
   ack-timeout-ticks: 60
-  # bedrock 模式下，客戶端位置與預期位置相差在此範圍內視為「已到位」（格）
   ack-tolerance: 4.0
+  # Phase 2 transition 整體逾時上限，單位為 tick
+  transition-timeout-ticks: 100
+  # 兩次 transition 之間的最短間隔，單位為 tick
+  transition-cooldown-ticks: 600
+  # transition 結束後使用 transition-grace-max-jump 有上限放寬的寬限期，單位為 tick
+  transition-grace-ticks: 20
+  # 延後 transition 超過 trigger-distance 的 8 倍時：none（不處理）、kick（踢出）、reorigin（嘗試重新置中）
+  walk-fallback: none
   # 每個維度可單獨覆寫 enabled / trigger-distance / reset-distance / alignment
   dimensions:
     overworld: { enabled: true }
@@ -28,48 +35,34 @@ origin-shift:
     the_end: { enabled: true }
 
 safety:
-  # 防呆閘：客戶端單次回報的位置與上一個已知真實座標相差超過此值，
-  # 且不在等待傳送到位的狀態，就丟棄該座標（避免被傳送到 0,0 附近）
   max-serverbound-jump: 64.0
-  # bedrock 模式觸發防呆閘後補送校正封包的最短間隔；Java 模式會丟棄異常移動並限制警告頻率
+  # Transition / grace movement limit; must be >= max-serverbound-jump
+  transition-grace-max-jump: 256.0
   correction-interval-ticks: 10
-  # 輸出較詳細的除錯訊息（首次攔截、換原點細節、管線結構）
   debug-log: false
 
 chunk-cache:
-  # 保存原始 Java 區塊封包與後續更新，供浮動原點重設／重放使用；Java 自動重設交易由 shift-while-moving 控制，預設關閉
   enabled: true
-  # 以 deflate 壓縮保存，省記憶體、略增 CPU
   compress: true
-  # 每位玩家最多保存的區塊數
   max-chunks: 2500
-  # 每位玩家快取的記憶體預算（含壓縮後區塊資料與更新覆蓋資料）
   max-bytes: 33554432
-  # 距離觸發值還有多遠（格）就開始保存區塊。必須大於伺服器視距（格）
   activate-margin: 1500
-  # 每個重放批次最多處理幾個區塊（shift-while-moving 啟用時由 Java 交易自動排程）
   resend-per-tick: 24
-  # 超出視距多少個區塊後從快取移除
   evict-margin-chunks: 4
 
-# 方塊實體 NBT 中需要平移的鍵（對 TileEntity 與區塊內嵌的方塊實體都有效）
 nbt-shift-keys:
   x: [x, pistonPosX]
   z: [z, pistonPosZ]
-  triples: [AttachedBlocks, BreakBlocks]   # [x,y,z,x,y,z,...] 形式的整數列表
+  triples: [AttachedBlocks, BreakBlocks]
 
 actionbar:
   enabled: true
-  # 隱藏原版的座標顯示（攔截 showcoordinates 遊戲規則）
   hide-vanilla-coordinates: true
   interval-ticks: 10
-  # 可用 & 或 § 色碼。變數：{x} {y} {z} {facing} {dim} {offx} {offz}
   format: "&fX &e{x}  &fY &e{y}  &fZ &e{z}  &7{facing}"
   number-format: "%,.1f"
-  # 把 Java 伺服器自己送的 ActionBar 接在座標後面，避免互相蓋掉
   merge-java-actionbar: true
   java-actionbar-keep-ms: 3000
   separator: " &8| &r"
-  # 基岩版回報的是眼睛高度；真實 Y = 回報值 - eye-height
   eye-height: 1.62
   facing: ["南 +Z", "西 -X", "北 -Z", "東 +X"]
