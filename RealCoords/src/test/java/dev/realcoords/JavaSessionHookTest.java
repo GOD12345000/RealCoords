@@ -599,6 +599,14 @@ class JavaSessionHookTest {
         channel.finishAndReleaseAll();
     }
     @Test
+    void handlerComparisonAtSixtyThousandBlocksUsesFiftyThousandVersusOneHundredThousandTrigger() {
+        assertTrue(handlerShiftsAtDistance(50_000, 60_000),
+                "the 50,000-block trigger must re-origin on the shared 60,000-block walk fixture");
+        assertFalse(handlerShiftsAtDistance(100_000, 60_000),
+                "the 100,000-block trigger must not re-origin on the same 60,000-block walk fixture");
+    }
+
+    @Test
     void handlerComparisonChangesOnlyTriggerDistanceOutcome() {
         assertTrue(handlerShiftsAtDistance(50_000),
                 "the handler with a 50,000-block trigger must re-origin at the shared 50,100-block fixture point");
@@ -607,6 +615,10 @@ class JavaSessionHookTest {
     }
 
     private static boolean handlerShiftsAtDistance(int triggerDistance) {
+        return handlerShiftsAtDistance(triggerDistance, 50_100);
+    }
+
+    private static boolean handlerShiftsAtDistance(int triggerDistance, int movementDistance) {
         ShiftConfig config = new ShiftConfig();
         ShiftConfig.Dim overworld = new ShiftConfig.Dim();
         overworld.trigger = triggerDistance;
@@ -630,7 +642,7 @@ class JavaSessionHookTest {
                 1, 23_000_000, 70, -17_000_000, 0, 0, 0, 0, 0));
         while (channel.readInbound() != null) { }
 
-        int destinationChunkX = (23_000_000 + 50_100) / 16;
+        int destinationChunkX = (23_000_000 + movementDistance) / 16;
         int destinationChunkZ = -17_000_000 / 16;
         channel.writeInbound(new ClientboundLevelChunkWithLightPacket(
                 destinationChunkX, destinationChunkZ, new byte[]{1}, Map.of(),
@@ -640,8 +652,8 @@ class JavaSessionHookTest {
         while (channel.readInbound() != null) { }
 
         boolean shifted = false;
-        for (int step = 1; step <= 835; step++) {
-            double realX = 23_000_000 + step * 60.0;
+        for (int step = 1; step <= Math.ceil(movementDistance / 60.0); step++) {
+            double realX = 23_000_000 + Math.min(step * 60.0, movementDistance);
             ServerboundMovePlayerPosPacket movement = new ServerboundMovePlayerPosPacket(
                     true, false, realX - transform.offsetX(), 70, -17_000_000 - transform.offsetZ());
             channel.writeOutbound(movement);
