@@ -6,7 +6,7 @@ final class TransitionDeferralState {
     private int ridingVehicleId = Integer.MIN_VALUE;
     private boolean containerOpen;
     private boolean sleeping;
-    private boolean gliding;\n    private boolean observationUnavailable;
+    private boolean gliding;\n    private boolean observationUnavailable = true;
 
     void initialize(int entityId) {
         selfEntityId = entityId;

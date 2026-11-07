@@ -482,20 +482,23 @@ class JavaSessionHookTest {
 
     @Test
     void respawnDuringOpenContainerClearsContainerDeferral() {
-        assertRespawnResetsState(state -> state.observeContainerOpened());
+        assertRespawnResetsState(channel -> channel.writeInbound(new ClientboundOpenScreenPacket(
+                3, ContainerType.GENERIC_9X3, Component.text("Chest"))));
     }
 
     @Test
     void respawnWhileRidingClearsPassengerDeferral() {
-        assertRespawnResetsState(state -> state.observePassengers(100, 42));
+        assertRespawnResetsState(channel -> channel.writeInbound(
+                new ClientboundSetPassengersPacket(100, new int[]{42})));
     }
 
     @Test
     void dimensionChangeWhileSleepingClearsPoseDeferral() {
-        assertRespawnResetsState(state -> state.observePlayerMetadata(42, 6, Pose.SLEEPING));
+        assertRespawnResetsState(channel -> channel.writeInbound(new ClientboundSetEntityDataPacket(42,
+                new EntityMetadata[]{new ObjectEntityMetadata<>(6, MetadataTypes.POSE, Pose.SLEEPING)})));
     }
 
-    private static void assertRespawnResetsState(java.util.function.Consumer<TransitionDeferralState> setup) {
+    private static void assertRespawnResetsState(java.util.function.Consumer<EmbeddedChannel> setup) {
         ShiftConfig config = new ShiftConfig();
         config.dims.put(0, new ShiftConfig.Dim());
         JavaSessionHook.JavaPacketTransformHandler handler =
@@ -506,7 +509,7 @@ class JavaSessionHookTest {
                 null, false, false, null, 0, 63);
         channel.writeInbound(new ClientboundLoginPacket(42, false, new Key[]{world},
                 20, 10, 10, false, true, false, spawn, true, true));
-        setup.accept(handler.deferralState());
+        setup.accept(channel);
         assertTrue(handler.deferralState().shouldDefer());
         channel.writeInbound(new ClientboundRespawnPacket(spawn, true, false));
         assertFalse(handler.deferralState().shouldDefer());
