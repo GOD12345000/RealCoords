@@ -780,6 +780,13 @@ class JavaSessionHookTest {
             }
             setTransitionPhase(handler, phase);
             assertEquals(phase, handler.transitionState(), "the packet must be tested in the requested phase");
+            if (phase == ReoriginTransition.State.PREPARE || phase == ReoriginTransition.State.RESET) {
+                assertTrue(syntheticResetGateActive(handler),
+                        "PREPARE/RESET packets must take the synthetic-reset freeze path");
+            } else {
+                assertTrue(activeReplayPlanPresent(handler),
+                        "REPLAY/DRAIN packets must take the replay movement-observation path");
+            }
 
             double before = transform.realX();
             double localX = before - transform.offsetX();
@@ -865,6 +872,20 @@ class JavaSessionHookTest {
         java.lang.reflect.Field stateField = ReoriginTransition.class.getDeclaredField("state");
         stateField.setAccessible(true);
         stateField.set(transition, phase);
+    }
+
+    private static boolean syntheticResetGateActive(
+            JavaSessionHook.JavaPacketTransformHandler handler) throws Exception {
+        java.lang.reflect.Field field = handler.getClass().getDeclaredField("syntheticResetGate");
+        field.setAccessible(true);
+        return ((SyntheticResetGate) field.get(handler)).active();
+    }
+
+    private static boolean activeReplayPlanPresent(
+            JavaSessionHook.JavaPacketTransformHandler handler) throws Exception {
+        java.lang.reflect.Field field = handler.getClass().getDeclaredField("activeReplayPlan");
+        field.setAccessible(true);
+        return field.get(handler) != null;
     }
 
     private static void transitionCompletedNow(JavaSessionHook.JavaPacketTransformHandler handler) throws Exception {

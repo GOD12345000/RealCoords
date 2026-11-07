@@ -47,4 +47,16 @@ class TransitionTimingPolicyTest {
 
         assertTrue(policy.safetyGuardRelaxed(true, 1L));
     }
+    @Test
+    void movementJumpLimitUsesBoundedGraceLimitOnlyDuringTransitionAndGrace() {
+        TransitionTimingPolicy policy = new TransitionTimingPolicy(600, 20);
+
+        assertEquals(64.0, policy.movementJumpLimit(false, 1_000_000_000L, 64.0, 256.0));
+        assertEquals(256.0, policy.movementJumpLimit(true, 1_000_000_000L, 64.0, 256.0));
+
+        policy.transitionCompleted(2_000_000_000L);
+        assertEquals(256.0, policy.movementJumpLimit(false, 2_000_000_001L, 64.0, 256.0));
+        assertEquals(64.0, policy.movementJumpLimit(false, 3_000_000_000L, 64.0, 256.0));
+    }
+
 }

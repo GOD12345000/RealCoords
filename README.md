@@ -157,6 +157,9 @@ plugins/Geyser-Velocity/extensions/realcoords/config.yml
 | trigger-distance | 100000 | 連續移動模式的精度觸發距離（格）；預設值依 float 精度設定 |
 | reset-distance | 50000 | 已偏移後，允許重設偏移的距離（格）；必須小於 trigger-distance |
 | cooldown-ticks | 100 | 舊 Bedrock 模式兩次偏移操作之間的冷卻時間 |
+| transition-timeout-ticks | 100 | Java 模式一次 transition 的最長時間 |
+| transition-cooldown-ticks | 600 | Java 模式一次 transition 完成後，禁止再次觸發移動式 re-origin 的最短間隔 |
+| transition-grace-ticks | 20 | Java 模式 transition 完成後，使用較大但有上限的移動距離限制的寬限時間 |
 | ack-timeout-ticks | 60 | 舊 Bedrock 模式等待客戶端位置確認的逾時時間 |
 | ack-tolerance | 4.0 | 舊 Bedrock 模式確認位置時容許的誤差 |
 | dimensions.*.enabled | true | 個別維度是否啟用 |

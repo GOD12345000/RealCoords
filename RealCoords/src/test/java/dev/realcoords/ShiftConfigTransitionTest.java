@@ -79,4 +79,28 @@ class ShiftConfigTransitionTest {
         }
     }
 
+    @Test
+    void transitionGraceMaxJumpIsNeverBelowNormalJumpAndOldConfigsRemainValid() throws Exception {
+        java.lang.reflect.Field field = ShiftConfig.class.getDeclaredField("transitionGraceMaxJump");
+        field.setAccessible(true);
+
+        ShiftConfig oldConfig = ShiftConfig.parse(Map.of("safety",
+                Map.of("max-serverbound-jump", 300.0)), ignored -> {});
+        assertEquals(300.0, field.getDouble(oldConfig),
+                "a missing grace limit must be raised to the normal limit when max-serverbound-jump exceeds 256");
+
+        AtomicInteger warnings = new AtomicInteger();
+        ShiftConfig invalid = ShiftConfig.parse(Map.of("safety", Map.of(
+                "max-serverbound-jump", 128.0,
+                "transition-grace-max-jump", 64.0)), ignored -> warnings.incrementAndGet());
+        assertEquals(128.0, field.getDouble(invalid));
+        assertEquals(1, warnings.get(), "an undersized transition grace limit must emit a warning");
+
+        ShiftConfig nonFinite = ShiftConfig.parse(Map.of("safety", Map.of(
+                "max-serverbound-jump", 64.0,
+                "transition-grace-max-jump", Double.POSITIVE_INFINITY)), ignored -> {});
+        assertEquals(64.0, field.getDouble(nonFinite),
+                "non-finite values must fall back to the normal movement limit");
+    }
+
 }
