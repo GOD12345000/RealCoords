@@ -29,9 +29,14 @@ import org.geysermc.mcprotocollib.protocol.data.game.entity.metadata.type.Object
 import org.geysermc.mcprotocollib.protocol.data.game.inventory.ContainerType;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundSetEntityDataPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.ClientboundSetPassengersPacket;
+import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.level.ClientboundLevelChunkWithLightPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.inventory.ClientboundContainerClosePacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.inventory.ClientboundOpenScreenPacket;
 
+
+import java.util.BitSet;
+import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -592,5 +597,62 @@ class JavaSessionHookTest {
         assertTrue(handler.transitionFailure().reason().contains("queue overflow"));
         assertFalse(channel.isOpen());
         channel.finishAndReleaseAll();
+    }
+    @Test
+    void handlerComparisonChangesOnlyTriggerDistanceOutcome() {
+        assertTrue(handlerShiftsAtDistance(50_000),
+                "the handler with a 50,000-block trigger must re-origin at the shared 50,100-block fixture point");
+        assertFalse(handlerShiftsAtDistance(50_100),
+                "the otherwise identical handler with a 50,100-block trigger must not re-origin at that point");
+    }
+
+    private static boolean handlerShiftsAtDistance(int triggerDistance) {
+        ShiftConfig config = new ShiftConfig();
+        ShiftConfig.Dim overworld = new ShiftConfig.Dim();
+        overworld.trigger = triggerDistance;
+        overworld.reset = 20_000;
+        overworld.alignment = 256;
+        config.dims.put(0, overworld);
+        config.recenterOnReload = 2_048;
+        config.shiftWhileMoving = true;
+        config.cooldownMs = 0;
+        JavaPacketTransform transform = new JavaPacketTransform(config);
+        JavaSessionHook.JavaPacketTransformHandler handler =
+                new JavaSessionHook.JavaPacketTransformHandler(transform, null, null);
+        EmbeddedChannel channel = new EmbeddedChannel(handler);
+
+        Key world = Key.key("minecraft:overworld");
+        PlayerSpawnInfo spawn = new PlayerSpawnInfo(0, world, 0L, GameMode.SURVIVAL,
+                null, false, false, null, 0, 63);
+        channel.writeInbound(new ClientboundLoginPacket(1, false, new Key[]{world},
+                20, 10, 10, false, true, false, spawn, true, true));
+        channel.writeInbound(new ClientboundPlayerPositionPacket(
+                1, 23_000_000, 70, -17_000_000, 0, 0, 0, 0, 0));
+        while (channel.readInbound() != null) { }
+
+        int destinationChunkX = (23_000_000 + 50_100) / 16;
+        int destinationChunkZ = -17_000_000 / 16;
+        channel.writeInbound(new ClientboundLevelChunkWithLightPacket(
+                destinationChunkX, destinationChunkZ, new byte[]{1}, Map.of(),
+                new org.geysermc.mcprotocollib.protocol.data.game.level.block.BlockEntityInfo[0],
+                new org.geysermc.mcprotocollib.protocol.data.game.level.LightUpdateData(
+                        new BitSet(), new BitSet(), new BitSet(), new BitSet(), List.of(), List.of())));
+        while (channel.readInbound() != null) { }
+
+        boolean shifted = false;
+        for (int step = 1; step <= 835; step++) {
+            double realX = 23_000_000 + step * 60.0;
+            ServerboundMovePlayerPosPacket movement = new ServerboundMovePlayerPosPacket(
+                    true, false, realX - transform.offsetX(), 70, -17_000_000 - transform.offsetZ());
+            channel.writeOutbound(movement);
+            if (handler.transitionState() == ReoriginTransition.State.RESET) {
+                shifted = true;
+                break;
+            }
+            channel.readOutbound();
+        }
+
+        channel.finishAndReleaseAll();
+        return shifted;
     }
 }
