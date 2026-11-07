@@ -8,7 +8,6 @@ final class TransitionDeferralState {
     private boolean sleeping;
     private boolean gliding;
     private boolean observationUnavailable = true;
-    private boolean observationUnavailable = true;
 
     void initialize(int entityId) {
         selfEntityId = entityId;
