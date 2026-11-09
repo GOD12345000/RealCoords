@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       tag_name:
-        description: "Release tag (use v2.0.0 for this release)"
+        description: "Release tag (use v2.0.1 for this release)"
         required: true
-        default: "v2.0.0"
+        default: "v2.0.1"
         type: string
 
 permissions:
@@ -37,6 +37,7 @@ jobs:
           test -f RealCoords/gradle.properties
           test -f RealCoords/src/main/resources/extension.yml
           test -d RealCoords/src/main/java
+          test -f RELEASE_NOTES_2.0.1.md
 
       - name: Verify release version matches requested tag
         env:
@@ -60,6 +61,6 @@ jobs:
           prerelease: false
           make_latest: true
           generate_release_notes: false
-          body_path: RELEASE_NOTES_2.0.0.md
+          body_path: RELEASE_NOTES_2.0.1.md
           files: RealCoords/build/libs/*.jar
           fail_on_unmatched_files: true
