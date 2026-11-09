@@ -20,7 +20,16 @@ class ShiftConfigDefaultsTest {
         assertEquals(50_000, config.dim(0).reset);
         assertEquals(2_048, config.recenterOnReload);
         assertFalse(config.shiftWhileMoving);
+        assertFalse(config.debug, "Safety → Debug Log must default to off");
         assertTrue(warnings.isEmpty());
+    }
+
+    @Test
+    void debugLogCanBeEnabledExplicitly() {
+        ShiftConfig config = ShiftConfig.parse(
+                Map.of("safety", Map.of("debug-log", true)), ignored -> { });
+
+        assertTrue(config.debug);
     }
 
     @Test

@@ -147,7 +147,7 @@ final class JavaSessionHook {
                 return;
             }
 
-            JavaPacketTransformHandler handler = new JavaPacketTransformHandler(new JavaPacketTransform(origin, config.maxJump, config), geyserSession, log);
+            JavaPacketTransformHandler handler = new JavaPacketTransformHandler(new JavaPacketTransform(origin, config.maxJump, config), geyserSession, log, config.debug);
             pipeline.addBefore(NetworkConstants.MANAGER_NAME, HANDLER_NAME, handler);
             log.info("[RealCoords] Java coordinate transform installed; pipeline=" + pipeline.names());
         };
@@ -164,6 +164,7 @@ final class JavaSessionHook {
 
     static final class JavaPacketTransformHandler extends ChannelDuplexHandler {
         private final ExtensionLogger log;
+        private final boolean debugLog;
         private final AtomicBoolean firstClientbound = new AtomicBoolean();
         private final AtomicBoolean firstServerbound = new AtomicBoolean();
         private long lastGuardWarningMs;
@@ -189,13 +190,18 @@ final class JavaSessionHook {
         private int nextSyntheticTeleportId = Integer.MIN_VALUE;
 
         JavaPacketTransformHandler(JavaPacketTransform transform, ExtensionLogger log) {
-            this(transform, null, log);
+            this(transform, null, log, false);
         }
 
         JavaPacketTransformHandler(JavaPacketTransform transform, GeyserSession geyserSession, ExtensionLogger log) {
+            this(transform, geyserSession, log, false);
+        }
+
+        JavaPacketTransformHandler(JavaPacketTransform transform, GeyserSession geyserSession, ExtensionLogger log, boolean debugLog) {
             this.transform = transform;
             this.geyserSession = geyserSession;
             this.log = log;
+            this.debugLog = debugLog;
             this.timingPolicy = new TransitionTimingPolicy(transform.transitionCooldownTicks(), transform.transitionGraceTicks());
         }
 
@@ -220,11 +226,12 @@ final class JavaSessionHook {
         TransitionDeferralState deferralState() { return deferralState; }
 
         private void beginCoordinateDiagnosticWindow() {
-            coordinateDiagnosticsRemaining = 20;
+            if (debugLog) coordinateDiagnosticsRemaining = 20;
         }
 
         private void recordCoordinatePacket(String direction, Packet original, Packet transformed,
                                              int offsetX, int offsetZ) {
+            if (!debugLog) return;
             Optional<String> before = PacketCoordinateInspector.describe(original);
             if (before.isEmpty()) return;
 
@@ -260,7 +267,7 @@ final class JavaSessionHook {
         }
 
         private void logCoordinatePacketCounts() {
-            if (log == null || coordinatePacketCounts.isEmpty()) return;
+            if (!debugLog || log == null || coordinatePacketCounts.isEmpty()) return;
             StringBuilder summary = new StringBuilder("[RealCoords] coordinate packet totals:");
             for (Map.Entry<String, long[]> entry : coordinatePacketCounts.entrySet()) {
                 long[] counts = entry.getValue();
@@ -540,7 +547,7 @@ final class JavaSessionHook {
 
         @Override
         public void channelRead(ChannelHandlerContext ctx, Object message) throws Exception {
-            if (message instanceof Packet packet && firstClientbound.compareAndSet(false, true)) {
+            if (debugLog && message instanceof Packet packet && firstClientbound.compareAndSet(false, true)) {
                 if (log != null) log.info("[RealCoords] Java hook first clientbound packet: " + packet.getClass().getName());
             }
             if (message instanceof Packet packet) {
@@ -610,7 +617,7 @@ final class JavaSessionHook {
                 JavaOriginState.Snapshot change = transform.takeOriginChange();
                 if (change != null && change.changed()) {
                     beginCoordinateDiagnosticWindow();
-                    if (log != null) {
+                    if (debugLog && log != null) {
                         log.info("[RealCoords] Java origin changed: offsetX=" + change.offsetX()
                                 + ", offsetZ=" + change.offsetZ());
                     }
@@ -773,7 +780,7 @@ final class JavaSessionHook {
             timingPolicy.transitionCompleted(System.nanoTime());
             if (transition.state() == ReoriginTransition.State.REPLAY) transition.enter(ReoriginTransition.State.DRAIN);
             if (transition.state() == ReoriginTransition.State.DRAIN) transition.enter(ReoriginTransition.State.NORMAL);
-            if (log != null) log.info("[RealCoords] live re-origin replay completed; movement unfrozen");
+            if (debugLog && log != null) log.info("[RealCoords] live re-origin replay completed; movement unfrozen");
         }
 
         private void cancelReplayTasks() {
@@ -834,7 +841,7 @@ final class JavaSessionHook {
 
         @Override
         public void write(ChannelHandlerContext ctx, Object message, ChannelPromise promise) throws Exception {
-            if (message instanceof Packet packet && firstServerbound.compareAndSet(false, true)) {
+            if (debugLog && message instanceof Packet packet && firstServerbound.compareAndSet(false, true)) {
                 if (log != null) log.info("[RealCoords] Java hook first serverbound packet: " + packet.getClass().getName());
             }
             if (message instanceof Packet packet) {
