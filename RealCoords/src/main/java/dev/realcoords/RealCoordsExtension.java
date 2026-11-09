@@ -29,7 +29,9 @@ public class RealCoordsExtension implements Extension {
             if ("java".equals(c.layer)) {
                 JavaOriginState origin = new JavaOriginState(c);
                 JavaSessionHook.install(session, c, origin, this.logger());
-                JavaBedrockAuxHook.install(session, c, origin, this.logger());
+                if (c.javaBedrockAuxHook) {
+                    JavaBedrockAuxHook.install(session, c, origin, this.logger());
+                }
             } else {
                 SessionHook.install(session, c, this.logger());
             }
