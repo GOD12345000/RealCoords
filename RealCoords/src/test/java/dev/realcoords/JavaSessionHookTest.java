@@ -368,9 +368,15 @@ class JavaSessionHookTest {
                 new ServerboundAcceptTeleportationPacket(4242, 0, 71, 0, 0, 0);
         assertTrue(channel.writeOutbound(realAck));
         ServerboundAcceptTeleportationPacket forwardedAck = channel.readOutbound();
-        assertSame(realAck, forwardedAck,
-                "Geyser's acknowledgement for the real teleport must pass through unchanged");
+        assertNotNull(forwardedAck);
+        assertNotSame(realAck, forwardedAck,
+                "position-bearing Geyser teleport confirmations must be copied with restored coordinates");
         assertEquals(4242, forwardedAck.getId());
+        assertEquals(transform.offsetX(), forwardedAck.getX(),
+                "the local X in Geyser's teleport confirmation must be restored to the current real origin");
+        assertEquals(71, forwardedAck.getY());
+        assertEquals(transform.offsetZ(), forwardedAck.getZ(),
+                "the local Z in Geyser's teleport confirmation must be restored to the current real origin");
 
         ReoriginReplayPlan plan = handler.prepareReplayPlan(0, 0, 0, 0, 256);
         assertEquals(1, plan.bufferedLiveUpdateCount());
