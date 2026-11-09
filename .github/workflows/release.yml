@@ -38,10 +38,13 @@ jobs:
           test -f RealCoords/src/main/resources/extension.yml
           test -d RealCoords/src/main/java
 
-      - name: Verify release version matches tag
+      - name: Verify release version matches requested tag
+        env:
+          RELEASE_TAG: ${{ inputs.tag_name }}
         run: |
-          test "$(grep '^version = ' RealCoords/build.gradle.kts | head -n1 | cut -d '"' -f2)" = "${GITHUB_REF_NAME#v}"
-          test "$(grep '^version:' RealCoords/src/main/resources/extension.yml | awk '{print $2}')" = "${GITHUB_REF_NAME#v}"
+          RELEASE_VERSION="${RELEASE_TAG#v}"
+          test "$(grep '^version = ' RealCoords/build.gradle.kts | head -n1 | cut -d '"' -f2)" = "$RELEASE_VERSION"
+          test "$(grep '^version:' RealCoords/src/main/resources/extension.yml | awk '{print $2}')" = "$RELEASE_VERSION"
 
       - name: Build release JAR
         working-directory: RealCoords
