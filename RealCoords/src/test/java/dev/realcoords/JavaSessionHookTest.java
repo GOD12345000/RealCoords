@@ -1,6 +1,7 @@
 package dev.realcoords;
 
 import io.netty.channel.embedded.EmbeddedChannel;
+import org.geysermc.geyser.api.extension.ExtensionLogger;
 import org.geysermc.mcprotocollib.network.packet.Packet;
 import net.kyori.adventure.key.Key;
 import org.geysermc.mcprotocollib.protocol.data.game.entity.player.GameMode;
@@ -35,6 +36,8 @@ import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.inventory.C
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.inventory.ClientboundOpenScreenPacket;
 
 
+import java.lang.reflect.Proxy;
+import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.List;
 import java.util.Map;
@@ -42,6 +45,66 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.*;
 
 class JavaSessionHookTest {
+    @Test
+    void debugSettingControlsJavaPacketDiagnosticsButKeepsSafetyWarnings() {
+        List<String> infos = new ArrayList<>();
+        List<String> warnings = new ArrayList<>();
+        ExtensionLogger logger = recordingLogger(infos, warnings);
+
+        ShiftConfig config = new ShiftConfig();
+        config.debug = false;
+        config.dims.put(0, new ShiftConfig.Dim());
+        JavaPacketTransform transform = new JavaPacketTransform(config);
+        JavaSessionHook.JavaPacketTransformHandler handler =
+                new JavaSessionHook.JavaPacketTransformHandler(transform, null, logger, config.debug);
+        EmbeddedChannel channel = new EmbeddedChannel(handler);
+        initializeMovementFixture(channel, transform);
+
+        assertTrue(infos.isEmpty(), "Debug Log off must suppress packet and origin diagnostics");
+
+        double localX = transform.realX() - transform.offsetX();
+        double localZ = transform.realZ() - transform.offsetZ();
+        channel.writeOutbound(new ServerboundMovePlayerPosPacket(
+                true, false, localX + 100, 70, localZ));
+
+        assertTrue(warnings.stream().anyMatch(message -> message.contains("dropped serverbound movement")),
+                "Safety warnings must remain visible while Debug Log is off");
+        channel.finishAndReleaseAll();
+    }
+
+    @Test
+    void debugSettingEnablesJavaPacketAndOriginDiagnostics() {
+        List<String> infos = new ArrayList<>();
+        ExtensionLogger logger = recordingLogger(infos, new ArrayList<>());
+
+        ShiftConfig config = new ShiftConfig();
+        config.debug = true;
+        config.dims.put(0, new ShiftConfig.Dim());
+        JavaPacketTransform transform = new JavaPacketTransform(config);
+        JavaSessionHook.JavaPacketTransformHandler handler =
+                new JavaSessionHook.JavaPacketTransformHandler(transform, null, logger, config.debug);
+        EmbeddedChannel channel = new EmbeddedChannel(handler);
+        initializeMovementFixture(channel, transform);
+
+        assertTrue(infos.stream().anyMatch(message -> message.contains("Java hook first clientbound packet")));
+        assertTrue(infos.stream().anyMatch(message -> message.contains("Java origin changed")));
+        assertTrue(infos.stream().anyMatch(message -> message.contains("coordinate packet #1")));
+        channel.finishAndReleaseAll();
+    }
+
+    private static ExtensionLogger recordingLogger(List<String> infos, List<String> warnings) {
+        return (ExtensionLogger) Proxy.newProxyInstance(
+                ExtensionLogger.class.getClassLoader(),
+                new Class<?>[]{ExtensionLogger.class},
+                (proxy, method, args) -> {
+                    if (args != null && args.length > 0 && args[0] instanceof String message) {
+                        if (method.getName().equals("info")) infos.add(message);
+                        if (method.getName().equals("warning")) warnings.add(message);
+                    }
+                    return null;
+                });
+    }
+
     @Test
     void handlerSuppressesOnlySyntheticResetResponses() {
         ShiftConfig config = new ShiftConfig();
