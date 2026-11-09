@@ -4,7 +4,7 @@ plugins {
 }
 
 group = "dev.realcoords"
-version = "1.0.0"
+version = "2.0.0"
 
 val geyserVersion: String by project
 val javaVersion: String by project
