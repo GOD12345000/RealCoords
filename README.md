@@ -73,7 +73,7 @@ plugins/
 ├── Geyser-Velocity.jar
 └── Geyser-Velocity/
     └── extensions/
-        └── RealCoords-2.0.0.jar
+        └── RealCoords-2.0.1.jar
 ```
 
 4. 完整重啟 Geyser／Velocity，確認啟動日誌顯示 RealCoords extension 已載入。
@@ -102,7 +102,7 @@ plugins/
 | `safety.transition-grace-max-jump` | `256.0` | transition／寬限期使用的水平移動上限 |
 | `safety.debug-log` | `false` | 額外除錯日誌；v2.0.1 起，詳細診斷 INFO 日誌會正確受此設定控制 |
 
-**請勿因為 2.0.0 已發布就打開 `shift-while-moving`。** 第二階段的狀態機與封包閘基礎已合併，但完整的 Geyser client-side reset、區塊／方塊更新／實體重播與世界狀態恢復，仍需逐項完成及實機驗收。
+**請勿因為 2.0.1 已發布就打開 `shift-while-moving`。** 第二階段的狀態機與封包閘基礎已合併，但完整的 Geyser client-side reset、區塊／方塊更新／實體重播與世界狀態恢復，仍需逐項完成及實機驗收。
 
 舊 Bedrock layer 的 `chunk-cache`、`cooldown-ticks`、`ack-timeout-ticks`、`ack-tolerance` 等設定仍保留給相容模式；不要把它們誤認為 Java layer 已經完成完整重播。
 
