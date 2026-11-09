@@ -1,3 +1,7 @@
+> **文件狀態：歷史開發任務書（2026-11-09）。** 本文件記錄 Java 協議層改版的原始需求與早期驗收條件，不是目前實作狀態的權威說明。若與現況不同，請以 [README.md](README.md)、[PHASE2_ADDENDUM.md](PHASE2_ADDENDUM.md) 與 [docs/phase2-notes.md](docs/phase2-notes.md) 為準。不得將本文件中的目標／計畫視為已完成或已驗證。
+
+---
+
 # RealCoords 改版任務書：把座標轉換從 Bedrock 層移到 Java 協議層
 
 > 給負責修改本 repo 的 AI／開發者。請完整讀完再動手。
