@@ -851,6 +851,17 @@ final class JavaSessionHook {
                     promise.setSuccess();
                     return;
                 }
+                // Geyser 26.x carries the confirmed player position in this packet.
+                // Keep synthetic reset acknowledgements gated above, but explicitly restore
+                // the real coordinates before forwarding a genuine Geyser confirmation.
+                if (packet instanceof ServerboundAcceptTeleportationPacket) {
+                    Packet transformed = transform.serverbound(packet, false,
+                            transform.maxServerboundJump());
+                    recordCoordinatePacket("serverbound", packet, transformed,
+                            transform.offsetX(), transform.offsetZ());
+                    super.write(ctx, transformed, promise);
+                    return;
+                }
                 if ((transform.offsetX() != 0 || transform.offsetZ() != 0)
                         && PacketCoordinateInspector.hasUnrecognizedServerboundCoordinates(packet)) {
                     String coordinates = PacketCoordinateInspector.describe(packet).orElse("<unavailable>");
