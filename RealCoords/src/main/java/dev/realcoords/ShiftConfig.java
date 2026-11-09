@@ -22,7 +22,7 @@ final class ShiftConfig {
         int trigger = 100000, reset = 50000, alignment = 256;
     }
 
-    boolean enabled = true, debug, shiftWhileMoving;
+    boolean enabled = true, debug, shiftWhileMoving, javaBedrockAuxHook = true;
     String layer = "java";
     int cooldownMs = 5000, ackTimeoutMs = 3000, guardIntervalMs = 500;
     int recenterOnReload = 2048;
@@ -78,6 +78,8 @@ final class ShiftConfig {
         c.enabled = bool(os, "enabled", true);
         c.layer = str(os, "layer", "java").trim().toLowerCase(Locale.ROOT);
         c.shiftWhileMoving = bool(os, "shift-while-moving", false);
+        Map<String, Object> javaMode = sec(root, "java-mode");
+        c.javaBedrockAuxHook = bool(javaMode, "bedrock-aux-hook", true);
         if (!c.layer.equals("java") && !c.layer.equals("bedrock")) {
             warning.accept("[RealCoords] origin-shift.layer 無效，改用 java");
             c.layer = "java";
