@@ -204,19 +204,19 @@ class JavaSessionHookTest {
                 1, 23_000_000, 100, -23_000_000, 0, 0, 0, 0, 0));
         while (channel.readInbound() != null) { }
 
-        UnknownCoordinatePacket unknown = new UnknownCoordinatePacket(1, 2, 3);
+        ServerboundUnknownCoordinatePacket unknown = new ServerboundUnknownCoordinatePacket(1, 2, 3);
         assertFalse(channel.writeOutbound(unknown),
                 "unknown coordinate-bearing serverbound packets must not reach the backend");
         assertNull(channel.readOutbound());
         channel.finishAndReleaseAll();
     }
 
-    private static final class UnknownCoordinatePacket implements Packet {
+    private static final class ServerboundUnknownCoordinatePacket implements Packet {
         private final double x;
         private final double y;
         private final double z;
 
-        private UnknownCoordinatePacket(double x, double y, double z) {
+        private ServerboundUnknownCoordinatePacket(double x, double y, double z) {
             this.x = x;
             this.y = y;
             this.z = z;
