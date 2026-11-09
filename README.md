@@ -2,7 +2,7 @@
 
 RealCoords 是一個 **Geyser Extension**，為經由 Geyser 連線的 Bedrock 玩家提供浮動原點座標轉換，降低 Geyser 在處理遠距離世界座標時遇到的浮點精度問題。
 
-> **v2.0.0 狀態：第二階段基礎整合版／測試發行。** Java 協議層座標轉換、第一階段的登入／重生／遠距傳送置中，以及第二階段已合併的 transition 狀態管理與封包延後基礎已包含在 main。CI #412 已通過。但這不代表連續移動 re-origin 的完整世界重設與重播已完成，也不代表所有遊戲情境已實機驗收。**`origin-shift.shift-while-moving` 預設仍為 `false`，目前不要在正式伺服器啟用。**
+> **v2.0.1 狀態：已發布的修補版本。** 本版修正 `Safety → Debug Log` 關閉時，部分 Java 座標封包、原點變更與 replay 診斷 INFO 日誌仍會輸出的問題。Java 協議層座標轉換、第一階段登入／重生／遠距傳送置中，以及第二階段已合併的 transition 狀態管理與封包延後基礎均已包含在 main。這不代表連續移動 re-origin 的完整世界重設與重播已完成，也不代表所有遊戲情境已實機驗收。**`origin-shift.shift-while-moving` 預設仍為 `false`，目前不要在正式伺服器啟用。**
 
 English summary: RealCoords is an experimental Geyser extension that translates supported Java protocol world coordinates before Geyser's translators process them, keeping Geyser's coordinate space near the local origin while restoring real coordinates toward the Java server.
 
@@ -10,15 +10,16 @@ English summary: RealCoords is an experimental Geyser extension that translates 
 
 | 項目 | 狀態 |
 |---|---|
-| 發行版本 | 2.0.0（本分支準備發行；以 GitHub Release 發布完成為準） |
+| 發行版本 | [2.0.1（已發布）](https://github.com/GOD12345000/RealCoords/releases/tag/v2.0.1) |
 | Geyser 建置目標 | 2.12.1-SNAPSHOT / Extension API 2.12.1 |
 | Java | 21 |
 | Gradle | 8.10.2 |
-| CI | [main Build #412](https://github.com/GOD12345000/RealCoords/actions/runs/42580739373) 通過 |
+| CI | [main Build（合併 v2.0.1 後）](https://github.com/GOD12345000/RealCoords/actions/runs/42587917245) 通過 |
 | 實機環境回報 | 維護者曾回報在 Velocity + Geyser 2.12.1、約 X=23,000,000 / Z=17,000,000 的測試場景遊玩未遇到問題；不等於完整相容性認證 |
 
 ## 發行文件
 
+- [2.0.1 Release Notes](RELEASE_NOTES_2.0.1.md)
 - [2.0.0 Release Notes](RELEASE_NOTES_2.0.0.md)
 - [Phase 1 舊版測試發行紀錄](RELEASE_NOTES_PHASE1.md)
 - [Phase 2 B transition deferral 技術筆記](docs/phase2-notes.md)
@@ -64,7 +65,7 @@ IEEE 754 float 的 ULP 會隨數值增大：
 ## 安裝
 
 1. 安裝並先正常啟動 Geyser（Velocity、Paper 等受支援平台）。
-2. 從 [GitHub Releases](https://github.com/GOD12345000/RealCoords/releases) 下載對應版本的 `RealCoords-2.0.0.jar`。
+2. 從 [GitHub Releases](https://github.com/GOD12345000/RealCoords/releases) 下載對應版本的 `RealCoords-2.0.1.jar`。
 3. 將 JAR 放入 Geyser data folder 下的 `extensions/`。Velocity 常見路徑如下：
 
 ```text
@@ -99,7 +100,7 @@ plugins/
 | `origin-shift.walk-fallback` | `none` | 延後重定位超過限制時的處理策略 |
 | `safety.max-serverbound-jump` | `64.0` | 一般狀態下允許的水平移動距離上限 |
 | `safety.transition-grace-max-jump` | `256.0` | transition／寬限期使用的水平移動上限 |
-| `safety.debug-log` | `false` | 額外除錯日誌 |
+| `safety.debug-log` | `false` | 額外除錯日誌；v2.0.1 起，詳細診斷 INFO 日誌會正確受此設定控制 |
 
 **請勿因為 2.0.0 已發布就打開 `shift-while-moving`。** 第二階段的狀態機與封包閘基礎已合併，但完整的 Geyser client-side reset、區塊／方塊更新／實體重播與世界狀態恢復，仍需逐項完成及實機驗收。
 
@@ -125,7 +126,7 @@ JAR 位於 `RealCoords/build/libs/`。GitHub Actions 的 **Build RealCoords** wo
 - 已支援封包的雙向 X/Z 座標轉換與玩家移動安全檢查。
 - 登入、重生／維度切換與合適遠距傳送時的原點選擇。
 - 第二階段 transition 狀態管理與封包延後／閘門基礎。
-- CI #412 對 main 合併提交 `c8e7aec7293547c25916665117cdf22f658eed4f` 建置成功。
+- v2.0.1 合併提交 `18b377d73fea011bf062b6ad7d59edb5fb2f64dd` 的 [main Build](https://github.com/GOD12345000/RealCoords/actions/runs/42587917245) 建置與測試成功。
 
 ### 尚未完成／不可宣稱已驗收
 
