@@ -151,6 +151,41 @@ class JavaSessionHookTest {
     }
 
     @Test
+    void positionBearingTeleportConfirmationRestoresRealCoordinates() {
+        ShiftConfig config = new ShiftConfig();
+        config.dims.put(0, new ShiftConfig.Dim());
+        JavaPacketTransform transform = new JavaPacketTransform(config);
+        JavaSessionHook.JavaPacketTransformHandler handler =
+                new JavaSessionHook.JavaPacketTransformHandler(transform, null, null);
+        EmbeddedChannel channel = new EmbeddedChannel(handler);
+
+        Key world = Key.key("minecraft:overworld");
+        PlayerSpawnInfo spawn = new PlayerSpawnInfo(0, world, 0L, GameMode.SURVIVAL,
+                null, false, false, null, 0, 63);
+        channel.writeInbound(new ClientboundLoginPacket(1, false, new Key[]{world},
+                20, 10, 10, false, true, false, spawn, true, true));
+        channel.writeInbound(new ClientboundPlayerPositionPacket(
+                1, 23_000_000, 100, -23_000_000, 0, 0, 0, 0, 0));
+        while (channel.readInbound() != null) { }
+
+        assertEquals(23_000_064, transform.offsetX());
+        assertEquals(-23_000_064, transform.offsetZ());
+
+        ServerboundAcceptTeleportationPacket geyserConfirmation =
+                new ServerboundAcceptTeleportationPacket(42, -64, 100, 64, 0, 0);
+        assertTrue(channel.writeOutbound(geyserConfirmation));
+        ServerboundAcceptTeleportationPacket backendConfirmation = channel.readOutbound();
+
+        assertNotNull(backendConfirmation);
+        assertEquals(23_000_000, backendConfirmation.getX(),
+                "26.x teleport confirmation X must be restored to the backend world coordinate");
+        assertEquals(100, backendConfirmation.getY());
+        assertEquals(-23_000_000, backendConfirmation.getZ(),
+                "26.x teleport confirmation Z must be restored to the backend world coordinate");
+        channel.finishAndReleaseAll();
+    }
+
+    @Test
     void abortClosesSessionInsteadOfAllowingLateSyntheticAcknowledgementsToLeak() {
         ShiftConfig config = new ShiftConfig();
         config.dims.put(0, new ShiftConfig.Dim());
