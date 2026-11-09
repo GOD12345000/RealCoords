@@ -143,6 +143,7 @@ JAR 位於 `RealCoords/build/libs/`。GitHub Actions 的 **Build RealCoords** wo
 3. transition 若沒有完整世界狀態重建，可能造成區塊、實體或互動狀態不一致。
 4. 原點切換可能中斷移動慣性；連續移動流程未經驗收前保持關閉。
 5. 舊 Bedrock layer 與 Java layer 的行為及設定用途不同，請勿混用其功能假設。
+6. 千萬不可以用弱加載珍珠炮，會崩掉！！！
 
 ## 回報問題
 
