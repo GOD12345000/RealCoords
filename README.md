@@ -17,6 +17,13 @@ English summary: RealCoords is an experimental Geyser extension that translates 
 | CI | [main Build #412](https://github.com/GOD12345000/RealCoords/actions/runs/42580739373) 通過 |
 | 實機環境回報 | 維護者曾回報在 Velocity + Geyser 2.12.1、約 X=23,000,000 / Z=17,000,000 的測試場景遊玩未遇到問題；不等於完整相容性認證 |
 
+## 發行文件
+
+- [2.0.0 Release Notes](RELEASE_NOTES_2.0.0.md)
+- [Phase 1 舊版測試發行紀錄](RELEASE_NOTES_PHASE1.md)
+- [Phase 2 B transition deferral 技術筆記](docs/phase2-notes.md)
+- [Phase 2 設計追加紀錄（歷史需求）](PHASE2_ADDENDUM.md)
+
 ## 功能概覽
 
 - 每位玩家、每個維度獨立保存 X/Z 浮動原點。
