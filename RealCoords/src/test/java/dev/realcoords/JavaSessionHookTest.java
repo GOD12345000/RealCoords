@@ -1,6 +1,7 @@
 package dev.realcoords;
 
 import io.netty.channel.embedded.EmbeddedChannel;
+import org.geysermc.mcprotocollib.network.packet.Packet;
 import net.kyori.adventure.key.Key;
 import org.geysermc.mcprotocollib.protocol.data.game.entity.player.GameMode;
 import org.geysermc.mcprotocollib.protocol.data.game.entity.player.PlayerSpawnInfo;
@@ -183,6 +184,43 @@ class JavaSessionHookTest {
         assertEquals(-23_000_000, backendConfirmation.getZ(),
                 "26.x teleport confirmation Z must be restored to the backend world coordinate");
         channel.finishAndReleaseAll();
+    }
+
+    @Test
+    void unknownServerboundPacketWithCoordinateFieldsIsDroppedWhenOriginIsShifted() {
+        ShiftConfig config = new ShiftConfig();
+        config.dims.put(0, new ShiftConfig.Dim());
+        JavaPacketTransform transform = new JavaPacketTransform(config);
+        JavaSessionHook.JavaPacketTransformHandler handler =
+                new JavaSessionHook.JavaPacketTransformHandler(transform, null, null);
+        EmbeddedChannel channel = new EmbeddedChannel(handler);
+
+        Key world = Key.key("minecraft:overworld");
+        PlayerSpawnInfo spawn = new PlayerSpawnInfo(0, world, 0L, GameMode.SURVIVAL,
+                null, false, false, null, 0, 63);
+        channel.writeInbound(new ClientboundLoginPacket(1, false, new Key[]{world},
+                20, 10, 10, false, true, false, spawn, true, true));
+        channel.writeInbound(new ClientboundPlayerPositionPacket(
+                1, 23_000_000, 100, -23_000_000, 0, 0, 0, 0, 0));
+        while (channel.readInbound() != null) { }
+
+        UnknownCoordinatePacket unknown = new UnknownCoordinatePacket(1, 2, 3);
+        assertFalse(channel.writeOutbound(unknown),
+                "unknown coordinate-bearing serverbound packets must not reach the backend");
+        assertNull(channel.readOutbound());
+        channel.finishAndReleaseAll();
+    }
+
+    private static final class UnknownCoordinatePacket implements Packet {
+        private final double x;
+        private final double y;
+        private final double z;
+
+        private UnknownCoordinatePacket(double x, double y, double z) {
+            this.x = x;
+            this.y = y;
+            this.z = z;
+        }
     }
 
     @Test
