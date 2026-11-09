@@ -1,3 +1,7 @@
+> **文件範圍：Phase 2 B transition deferral 的程式碼調查筆記。** 本文件只記錄狀態來源、Netty event-loop 所有權與 fail-safe 規則；不代表完整 Geyser reset、chunk/entity replay 或 Phase 2 C 已完成。請參閱 [README](../README.md) 的目前階段與限制。
+
+---
+
 # Phase 2 B — transition deferral packet notes
 
 ## Ownership and threading

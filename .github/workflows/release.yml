@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       tag_name:
-        description: "Release tag (for the first release, use v1.0.0)"
+        description: "Release tag (use v2.0.0 for this release)"
         required: true
-        default: "v1.0.0"
+        default: "v2.0.0"
         type: string
 
 permissions:
@@ -38,6 +38,14 @@ jobs:
           test -f RealCoords/src/main/resources/extension.yml
           test -d RealCoords/src/main/java
 
+      - name: Verify release version matches requested tag
+        env:
+          RELEASE_TAG: ${{ inputs.tag_name }}
+        run: |
+          RELEASE_VERSION="${RELEASE_TAG#v}"
+          test "$(grep '^version = ' RealCoords/build.gradle.kts | head -n1 | cut -d '"' -f2)" = "$RELEASE_VERSION"
+          test "$(grep '^version:' RealCoords/src/main/resources/extension.yml | awk '{print $2}')" = "$RELEASE_VERSION"
+
       - name: Build release JAR
         working-directory: RealCoords
         run: gradle --no-daemon clean build
@@ -52,23 +60,6 @@ jobs:
           prerelease: false
           make_latest: true
           generate_release_notes: false
-          body: |
-            ## RealCoords ${{ inputs.tag_name }}
-
-            Experimental Geyser extension implementing a per-player floating origin for Bedrock-side coordinates.
-
-            ### Included
-            - RealCoords extension JAR built from this release commit.
-            - Source code and build configuration are available in this repository.
-
-            ### Compatibility
-            - Build target: Geyser 2.12.1-SNAPSHOT
-            - Java bytecode target: Java 21
-            - Tested loading environment: Velocity with Geyser 2.12.1.
-
-            ### Important status
-            The extension has been confirmed to compile and load in the stated environment. Full gameplay correctness has **not** yet been verified. Chunk transitions, block interactions, entities, vehicles, portals, maps, redstone and multiplayer behavior still require testing.
-
-            Please test in a backed-up test world before using it on a production server. See the repository README for installation instructions, configuration reference, known limitations and the test checklist.
+          body_path: RELEASE_NOTES_2.0.0.md
           files: RealCoords/build/libs/*.jar
           fail_on_unmatched_files: true
