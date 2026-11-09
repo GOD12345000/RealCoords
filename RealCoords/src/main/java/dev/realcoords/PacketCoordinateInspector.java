@@ -12,6 +12,10 @@ import java.util.Set;
  * This class never changes packet data.
  */
 final class PacketCoordinateInspector {
+    private static final Set<String> SERVERBOUND_NON_WORLD_COORDINATE_PACKETS = Set.of(
+            "ServerboundInteractPacket"
+    );
+
     private static final Set<String> TRANSFORMED_SERVERBOUND_COORDINATE_PACKETS = Set.of(
             "ServerboundAcceptTeleportationPacket",
             "ServerboundUseItemOnPacket",
@@ -37,7 +41,8 @@ final class PacketCoordinateInspector {
 
     static boolean hasUnrecognizedServerboundCoordinates(Packet packet) {
         if (packet == null || !packet.getClass().getSimpleName().startsWith("Serverbound")
-                || isTransformedServerboundCoordinatePacket(packet)) {
+                || isTransformedServerboundCoordinatePacket(packet)
+                || SERVERBOUND_NON_WORLD_COORDINATE_PACKETS.contains(packet.getClass().getSimpleName())) {
             return false;
         }
         return describe(packet).isPresent();
@@ -46,12 +51,17 @@ final class PacketCoordinateInspector {
     static Optional<String> describe(Packet packet) {
         if (packet == null) return Optional.empty();
 
+        if (packet.getClass().getSimpleName().equals("ServerboundInteractPacket")) {
+            Optional<String> relative = describeVector(invoke(packet, "getLocation"));
+            if (relative.isPresent()) return Optional.of("entityRelativeLocation=" + relative.get());
+        }
+
         Optional<String> direct = describeTriplet(packet);
         if (direct.isPresent()) return direct;
 
         for (String getter : new String[]{
                 "getPosition", "getPos", "getBlockPosition", "getBlockPos",
-                "getCenter", "getEntry", "getTarget"
+                "getCenter", "getEntry", "getTarget", "getGlobalPos"
         }) {
             Object value = invoke(packet, getter);
             Optional<String> nested = describeVector(value);
