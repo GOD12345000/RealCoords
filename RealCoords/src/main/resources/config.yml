@@ -1,6 +1,10 @@
 # RealCoords：基岩版玩家的「浮動原點」與真實座標顯示
 # 修改後需重啟 Geyser（或重新載入擴充）。
 
+# Java protocol mode auxiliary Bedrock pipeline hook; disable only for comparison tests
+java-mode:
+  bedrock-aux-hook: true
+
 origin-shift:
   enabled: true
   # java：在 Geyser 轉成 float 前轉換；bedrock：舊版相容模式

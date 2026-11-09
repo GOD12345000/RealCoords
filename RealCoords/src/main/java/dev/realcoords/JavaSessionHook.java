@@ -32,6 +32,9 @@ import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.inventory.C
 import org.geysermc.mcprotocollib.protocol.packet.ingame.clientbound.entity.player.ClientboundPlayerPositionPacket;
 import org.geysermc.mcprotocollib.protocol.packet.ingame.serverbound.level.ServerboundAcceptTeleportationPacket;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -164,6 +167,8 @@ final class JavaSessionHook {
         private final AtomicBoolean firstClientbound = new AtomicBoolean();
         private final AtomicBoolean firstServerbound = new AtomicBoolean();
         private long lastGuardWarningMs;
+        private int coordinateDiagnosticsRemaining;
+        private final Map<String, long[]> coordinatePacketCounts = new LinkedHashMap<>();
 
         private final JavaPacketTransform transform;
         private final GeyserSession geyserSession;
@@ -213,6 +218,59 @@ final class JavaSessionHook {
         }
 
         TransitionDeferralState deferralState() { return deferralState; }
+
+        private void beginCoordinateDiagnosticWindow() {
+            coordinateDiagnosticsRemaining = 20;
+        }
+
+        private void recordCoordinatePacket(String direction, Packet original, Packet transformed,
+                                             int offsetX, int offsetZ) {
+            Optional<String> before = PacketCoordinateInspector.describe(original);
+            if (before.isEmpty()) return;
+
+            String packetName = original.getClass().getSimpleName();
+            String key = direction + "/" + packetName;
+            long[] counts = coordinatePacketCounts.computeIfAbsent(key, ignored -> new long[3]);
+            String after = transformed == null
+                    ? "<dropped>"
+                    : PacketCoordinateInspector.describe(transformed).orElse("<no coordinate payload>");
+            boolean converted = transformed != null && !before.get().equals(after);
+            if (converted) {
+                counts[0]++;
+            } else if (transformed == null) {
+                counts[2]++;
+            } else {
+                counts[1]++;
+            }
+
+            if (coordinateDiagnosticsRemaining > 0) {
+                if (log != null) {
+                    String operation = direction.equals("clientbound") ? "subtract" : "add";
+                    log.info("[RealCoords] coordinate packet #" + (21 - coordinateDiagnosticsRemaining)
+                            + " direction=" + direction
+                            + " type=" + original.getClass().getName()
+                            + " before={" + before.get() + "}"
+                            + " after={" + after + "}"
+                            + " offsetX=" + offsetX + " offsetZ=" + offsetZ
+                            + " operation=" + operation
+                            + " result=" + (converted ? "converted" : transformed == null ? "dropped" : "unchanged"));
+                }
+                coordinateDiagnosticsRemaining--;
+            }
+        }
+
+        private void logCoordinatePacketCounts() {
+            if (log == null || coordinatePacketCounts.isEmpty()) return;
+            StringBuilder summary = new StringBuilder("[RealCoords] coordinate packet totals:");
+            for (Map.Entry<String, long[]> entry : coordinatePacketCounts.entrySet()) {
+                long[] counts = entry.getValue();
+                summary.append(" ").append(entry.getKey())
+                        .append("{converted=").append(counts[0])
+                        .append(",unchanged=").append(counts[1])
+                        .append(",dropped=").append(counts[2]).append("}");
+            }
+            log.info(summary.toString());
+        }
 
         private void cancelTransitionTimeout() {
             ScheduledFuture<?> timeout = transitionTimeout;
@@ -467,6 +525,7 @@ final class JavaSessionHook {
                 if (preparingLiveUpdates != null) preparingLiveUpdates.clear();
                 preparingLiveUpdates = null;
             }
+            logCoordinatePacketCounts();
             super.channelInactive(ctx);
         }
 
@@ -549,10 +608,15 @@ final class JavaSessionHook {
                 }
                 Packet transformed = transform.clientbound(packet);
                 JavaOriginState.Snapshot change = transform.takeOriginChange();
-                if (change != null && log != null) {
-                    log.info("[RealCoords] Java origin changed: offsetX=" + change.offsetX()
-                            + ", offsetZ=" + change.offsetZ());
+                if (change != null && change.changed()) {
+                    beginCoordinateDiagnosticWindow();
+                    if (log != null) {
+                        log.info("[RealCoords] Java origin changed: offsetX=" + change.offsetX()
+                                + ", offsetZ=" + change.offsetZ());
+                    }
                 }
+                recordCoordinatePacket("clientbound", packet, transformed,
+                        transform.offsetX(), transform.offsetZ());
                 super.channelRead(ctx, transformed);
                 if (transform.takeDeathPositionWarning() && log != null) {
                     log.warning("[RealCoords] lastDeathPos remains outside the local origin radius; "
@@ -788,11 +852,28 @@ final class JavaSessionHook {
                     promise.setSuccess();
                     return;
                 }
-                // Geyser has already confirmed this backend teleport in Bedrock
-                // coordinates. Forward the acknowledgement unchanged; only the
-                // synthetic-reset gate above may consume a synthetic confirmation.
+                // Geyser 26.x carries the confirmed player position in this packet.
+                // Keep synthetic reset acknowledgements gated above, but explicitly restore
+                // the real coordinates before forwarding a genuine Geyser confirmation.
                 if (packet instanceof ServerboundAcceptTeleportationPacket) {
-                    super.write(ctx, packet, promise);
+                    Packet transformed = transform.serverbound(packet, false,
+                            transform.maxServerboundJump());
+                    recordCoordinatePacket("serverbound", packet, transformed,
+                            transform.offsetX(), transform.offsetZ());
+                    super.write(ctx, transformed, promise);
+                    return;
+                }
+                if ((transform.offsetX() != 0 || transform.offsetZ() != 0)
+                        && PacketCoordinateInspector.hasUnrecognizedServerboundCoordinates(packet)) {
+                    String coordinates = PacketCoordinateInspector.describe(packet).orElse("<unavailable>");
+                    if (log != null) {
+                        log.warning("[RealCoords] dropped unrecognized coordinate-bearing serverbound packet "
+                                + packet.getClass().getName() + " coordinates={" + coordinates + "}"
+                                + " offsetX=" + transform.offsetX() + " offsetZ=" + transform.offsetZ());
+                    }
+                    recordCoordinatePacket("serverbound", packet, null,
+                            transform.offsetX(), transform.offsetZ());
+                    promise.setSuccess();
                     return;
                 }
                 long nowNanos = System.nanoTime();
@@ -841,6 +922,11 @@ final class JavaSessionHook {
                 boolean allowOriginShift = !deferralState.shouldDefer() && !timingPolicy.cooldownActive(nowNanos);
                 Packet transformed = transform.serverbound(packet, allowOriginShift, jumpLimit);
                 JavaOriginState.Snapshot movementOriginChange = transform.takeOriginChange();
+                if (movementOriginChange != null && movementOriginChange.changed()) {
+                    beginCoordinateDiagnosticWindow();
+                }
+                recordCoordinatePacket("serverbound", packet, transformed,
+                        transform.offsetX(), transform.offsetZ());
                 if (movementOriginChange != null && movementOriginChange.changed()) {
                     promise.setSuccess();
                     int reservedTeleportId = allocateSyntheticTeleportId();

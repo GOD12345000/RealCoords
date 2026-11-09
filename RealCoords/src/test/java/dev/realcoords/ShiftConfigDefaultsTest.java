@@ -24,6 +24,25 @@ class ShiftConfigDefaultsTest {
     }
 
     @Test
+    void javaModeBedrockAuxHookDefaultsEnabledAndCanBeDisabled() throws Exception {
+        java.lang.reflect.Field field;
+        try {
+            field = ShiftConfig.class.getDeclaredField("javaBedrockAuxHook");
+        } catch (NoSuchFieldException missing) {
+            fail("ShiftConfig must expose javaBedrockAuxHook");
+            return;
+        }
+        field.setAccessible(true);
+
+        ShiftConfig defaults = new ShiftConfig();
+        assertTrue(field.getBoolean(defaults), "Bedrock auxiliary hook must remain enabled by default");
+
+        ShiftConfig disabled = ShiftConfig.parse(
+                Map.of("java-mode", Map.of("bedrock-aux-hook", false)), ignored -> { });
+        assertFalse(field.getBoolean(disabled), "configuration must disable the auxiliary hook");
+    }
+
+    @Test
     void resetDistanceAtOrAboveTriggerIsAdjustedAndWarned() {
         List<String> warnings = new ArrayList<>();
         ShiftConfig config = ShiftConfig.parse(
