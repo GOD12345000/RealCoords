@@ -12,21 +12,29 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /** 所有可調參數都在這裡，從 config.yml 讀入，沒有任何寫死的距離。 */
 final class ShiftConfig {
     static final class Dim {
         boolean enabled = true;
-        int trigger = 50000, reset = 20000, alignment = 256;
+        int trigger = 100000, reset = 50000, alignment = 256;
     }
 
-    boolean enabled = true, debug;
+    boolean enabled = true, debug, shiftWhileMoving, javaBedrockAuxHook = true;
+    String layer = "java";
     int cooldownMs = 5000, ackTimeoutMs = 3000, guardIntervalMs = 500;
-    double ackTolerance = 4.0, maxJump = 64.0;
+    int recenterOnReload = 2048;
+    int transitionTimeoutTicks = 100;
+    int transitionCooldownTicks = 600;
+    int transitionGraceTicks = 20;
+    String walkFallback = "none";
+    double ackTolerance = 4.0, maxJump = 64.0, transitionGraceMaxJump = 256.0;
 
     boolean cacheEnabled = true, cacheCompress = true;
     int cacheMaxChunks = 2500, cacheMargin = 1500, resendPerTick = 24, evictMarginChunks = 4;
+    long cacheMaxBytes = 32L * 1024 * 1024;
 
     final Map<Integer, Dim> dims = new HashMap<>();
 
@@ -47,8 +55,6 @@ final class ShiftConfig {
         return d != null ? d : dims.get(0);
     }
 
-    // ---- 載入 ----
-
     static ShiftConfig load(Path dir, Class<?> anchor, ExtensionLogger log) throws IOException {
         Files.createDirectories(dir);
         Path file = dir.resolve("config.yml");
@@ -62,15 +68,44 @@ final class ShiftConfig {
             Object o = new Yaml().load(r);
             root = o instanceof Map<?, ?> ? cast(o) : new HashMap<>();
         }
+        return parse(root, log::warning);
+    }
 
+    /** Package-visible parser so defaults and validation can be tested without a live Geyser logger. */
+    static ShiftConfig parse(Map<String, Object> root, java.util.function.Consumer<String> warning) {
         ShiftConfig c = new ShiftConfig();
         Map<String, Object> os = sec(root, "origin-shift");
         c.enabled = bool(os, "enabled", true);
+        c.layer = str(os, "layer", "java").trim().toLowerCase(Locale.ROOT);
+        c.shiftWhileMoving = bool(os, "shift-while-moving", false);
+        Map<String, Object> javaMode = sec(root, "java-mode");
+        c.javaBedrockAuxHook = bool(javaMode, "bedrock-aux-hook", true);
+        if (!c.layer.equals("java") && !c.layer.equals("bedrock")) {
+            warning.accept("[RealCoords] origin-shift.layer 無效，改用 java");
+            c.layer = "java";
+        }
+
+        c.transitionTimeoutTicks = Math.max(1, num(os, "transition-timeout-ticks", 100));
+        c.transitionCooldownTicks = Math.max(0, num(os, "transition-cooldown-ticks", 600));
+        c.transitionGraceTicks = Math.max(0, num(os, "transition-grace-ticks", 20));
+        c.walkFallback = str(os, "walk-fallback", "none").trim().toLowerCase(Locale.ROOT);
+        if (!List.of("none", "kick", "reorigin").contains(c.walkFallback)) {
+            warning.accept("[RealCoords] origin-shift.walk-fallback 無效，改用 none");
+            c.walkFallback = "none";
+        }
 
         Dim base = new Dim();
         base.alignment = align(num(os, "alignment", 256));
-        base.trigger = Math.max(1000, num(os, "trigger-distance", 50000));
-        base.reset = num(os, "reset-distance", 20000);
+        base.trigger = Math.max(1000, num(os, "trigger-distance", 100000));
+        base.reset = Math.max(0, num(os, "reset-distance", 50000));
+        c.recenterOnReload = Math.max(0, num(os, "recenter-on-reload", 2048));
+        if (base.reset >= base.trigger) {
+            warning.accept("[RealCoords] reset-distance 必須小於 trigger-distance，已自動調整");
+            base.reset = base.trigger / 2;
+        }
+        if (base.trigger > 4_000_000) {
+            warning.accept("[RealCoords] trigger-distance > 4,000,000：float ULP 已達 0.25 格以上，座標精度可能明顯下降");
+        }
         c.cooldownMs = num(os, "cooldown-ticks", 100) * 50;
         c.ackTimeoutMs = num(os, "ack-timeout-ticks", 60) * 50;
         c.ackTolerance = dbl(os, "ack-tolerance", 4.0);
@@ -82,17 +117,29 @@ final class ShiftConfig {
             Dim x = new Dim();
             x.enabled = bool(d, "enabled", true);
             x.trigger = Math.max(1000, num(d, "trigger-distance", base.trigger));
-            x.reset = num(d, "reset-distance", base.reset);
+            x.reset = Math.max(0, num(d, "reset-distance", base.reset));
             x.alignment = align(num(d, "alignment", base.alignment));
             if (x.reset >= x.trigger) {
-                log.warning("[RealCoords] " + names[id] + ": reset-distance 必須小於 trigger-distance，已自動調整");
+                warning.accept("[RealCoords] " + names[id] + ": reset-distance 必須小於 trigger-distance，已自動調整");
                 x.reset = x.trigger / 2;
+            }
+            if (d.containsKey("trigger-distance") && x.trigger > 4_000_000) {
+                warning.accept("[RealCoords] " + names[id] + " trigger-distance > 4,000,000：float ULP 已達 0.25 格以上，座標精度可能明顯下降");
             }
             c.dims.put(id, x);
         }
 
         Map<String, Object> sf = sec(root, "safety");
-        c.maxJump = dbl(sf, "max-serverbound-jump", 64.0);
+        double configuredMaxJump = dbl(sf, "max-serverbound-jump", 64.0);
+        c.maxJump = Double.isFinite(configuredMaxJump) ? Math.max(1.0, configuredMaxJump) : 64.0;
+        double configuredTransitionGraceMaxJump = dbl(sf, "transition-grace-max-jump", 256.0);
+        if (!Double.isFinite(configuredTransitionGraceMaxJump)
+                || configuredTransitionGraceMaxJump < c.maxJump) {
+            warning.accept("[RealCoords] safety.transition-grace-max-jump 必須是有限數值且不小於 max-serverbound-jump，已調整為 max-serverbound-jump");
+            c.transitionGraceMaxJump = c.maxJump;
+        } else {
+            c.transitionGraceMaxJump = configuredTransitionGraceMaxJump;
+        }
         c.guardIntervalMs = num(sf, "correction-interval-ticks", 10) * 50;
         c.debug = bool(sf, "debug-log", false);
 
@@ -100,6 +147,7 @@ final class ShiftConfig {
         c.cacheEnabled = bool(cc, "enabled", true);
         c.cacheCompress = bool(cc, "compress", true);
         c.cacheMaxChunks = Math.max(64, num(cc, "max-chunks", 2500));
+        c.cacheMaxBytes = Math.max(1024L * 1024, longNum(cc, "max-bytes", 32L * 1024 * 1024));
         c.cacheMargin = Math.max(256, num(cc, "activate-margin", 1500));
         c.resendPerTick = Math.max(1, num(cc, "resend-per-tick", 24));
         c.evictMarginChunks = Math.max(0, num(cc, "evict-margin-chunks", 4));
@@ -124,8 +172,6 @@ final class ShiftConfig {
         return c;
     }
 
-    // ---- 小工具 ----
-
     private static int align(int a) {
         return Math.max(16, (a / 16) * 16);
     }
@@ -146,6 +192,10 @@ final class ShiftConfig {
 
     private static int num(Map<String, Object> m, String k, int d) {
         return m.get(k) instanceof Number n ? n.intValue() : d;
+    }
+
+    private static long longNum(Map<String, Object> m, String k, long d) {
+        return m.get(k) instanceof Number n ? n.longValue() : d;
     }
 
     private static double dbl(Map<String, Object> m, String k, double d) {

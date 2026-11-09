@@ -19,6 +19,8 @@ dependencies {
     compileOnly("org.geysermc.geyser:api:$geyserVersion")
     compileOnly("org.geysermc.geyser:core:$geyserVersion")
     implementation("org.yaml:snakeyaml:2.2")
+    testImplementation("org.junit.jupiter:junit-jupiter:5.11.4")
+    testImplementation("org.geysermc.geyser:core:$geyserVersion")
 }
 
 tasks.withType<JavaCompile> {
@@ -29,6 +31,17 @@ tasks.withType<JavaCompile> {
 tasks.shadowJar {
     archiveClassifier.set("")
     relocate("org.yaml.snakeyaml", "dev.realcoords.libs.snakeyaml")
+}
+
+tasks.test {
+    useJUnitPlatform()
+    testLogging {
+        events("failed", "skipped")
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+        showCauses = true
+        showExceptions = true
+        showStackTraces = true
+    }
 }
 
 tasks.build { dependsOn(tasks.shadowJar) }
